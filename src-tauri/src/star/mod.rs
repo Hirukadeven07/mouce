@@ -4,8 +4,9 @@ pub mod position;
 
 use crate::settings::{self, Settings, StarSize};
 use position::{clamp_to_monitors, default_position, keep_inside, Rect};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{
     AppHandle, LogicalSize, Manager, Monitor, PhysicalPosition, PhysicalSize, WebviewUrl,
@@ -149,12 +150,61 @@ pub fn resize(app: &AppHandle, size: StarSize) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Labels of windows that are being built right now, so two quick requests for the same
+/// window never build it twice.
+#[derive(Default)]
+pub struct OpeningWindows(Mutex<HashSet<&'static str>>);
+
+impl OpeningWindows {
+    /// Marks `label` as being built. Returns false if it already is.
+    pub fn try_begin(&self, label: &'static str) -> bool {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).insert(label)
+    }
+
+    /// Marks `label` as no longer being built (the build finished or failed).
+    pub fn finish(&self, label: &'static str) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).remove(label);
+    }
+}
+
+/// Clears the "being built" mark for its window when dropped, whatever happens.
+struct OpeningMark {
+    app: AppHandle,
+    label: &'static str,
+}
+
+impl OpeningMark {
+    fn try_new(app: &AppHandle, label: &'static str) -> Option<OpeningMark> {
+        let state = app.try_state::<crate::AppState>()?;
+        state.opening.try_begin(label).then(|| OpeningMark { app: app.clone(), label })
+    }
+}
+
+impl Drop for OpeningMark {
+    fn drop(&mut self) {
+        if let Some(state) = self.app.try_state::<crate::AppState>() {
+            state.opening.finish(self.label);
+        }
+    }
+}
+
+fn focus_existing(app: &AppHandle, label: &'static str) -> bool {
+    let Some(w) = app.get_webview_window(label) else { return false };
+    let _ = w.unminimize();
+    let _ = w.show();
+    let _ = w.set_focus();
+    true
+}
+
 /// Focuses the window `label`, creating it first if needed.
 fn open_window(app: &AppHandle, label: &'static str, title: &'static str, size: (f64, f64)) {
-    if let Some(w) = app.get_webview_window(label) {
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
+    if focus_existing(app, label) {
+        return;
+    }
+    // A build is already under way for this label: it will show the window.
+    let Some(mark) = OpeningMark::try_new(app, label) else { return };
+    // The previous build may have finished between the check above and taking the mark.
+    if focus_existing(app, label) {
         return;
     }
     // Windows can deadlock when a window is built from the event-loop thread; build elsewhere.
@@ -166,6 +216,7 @@ fn open_window(app: &AppHandle, label: &'static str, title: &'static str, size: 
             .decorations(true)
             .center()
             .build();
+        drop(mark);
         if let Err(e) = built {
             eprintln!("could not open {label} window: {e}");
         }
@@ -180,4 +231,27 @@ pub fn open_settings(app: &AppHandle) {
 /// Focuses the first-run welcome window, creating it first if needed.
 pub fn open_firstrun(app: &AppHandle) {
     open_window(app, FIRSTRUN_LABEL, "Welcome to Star", (520.0, 600.0));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_window_can_only_be_marked_once_until_finished() {
+        let opening = OpeningWindows::default();
+        assert!(opening.try_begin(SETTINGS_LABEL));
+        assert!(!opening.try_begin(SETTINGS_LABEL), "second request while building");
+        assert!(opening.try_begin(FIRSTRUN_LABEL), "other windows are independent");
+        opening.finish(SETTINGS_LABEL);
+        assert!(opening.try_begin(SETTINGS_LABEL), "free again after the build finished");
+        assert!(!opening.try_begin(FIRSTRUN_LABEL));
+    }
+
+    #[test]
+    fn finishing_an_unmarked_window_is_harmless() {
+        let opening = OpeningWindows::default();
+        opening.finish(SETTINGS_LABEL);
+        assert!(opening.try_begin(SETTINGS_LABEL));
+    }
 }

@@ -9,6 +9,7 @@ use crate::ollama_setup::{self, OllamaStatus, PullProgress};
 use crate::settings::{self, ProviderId, Settings};
 use crate::{star, AppState};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::MutexGuard;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt as _;
@@ -25,6 +26,36 @@ const TEST_MAX_TOKENS: u32 = 16;
 
 fn lock(state: &AppState) -> MutexGuard<'_, Settings> {
     state.settings.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Runs a closure when dropped: on normal exit, on an early return, when a future holding
+/// it is dropped, and while unwinding from a panic.
+struct OnDrop<F: FnOnce()>(Option<F>);
+
+impl<F: FnOnce()> OnDrop<F> {
+    fn new(f: F) -> OnDrop<F> {
+        OnDrop(Some(f))
+    }
+}
+
+impl<F: FnOnce()> Drop for OnDrop<F> {
+    fn drop(&mut self) {
+        if let Some(f) = self.0.take() {
+            f();
+        }
+    }
+}
+
+/// For work that happens after a command already succeeded (its result is saved): a
+/// failure is only reported, never turned into an error for the caller.
+fn log_best_effort<E: std::fmt::Display>(
+    what: &str,
+    result: Result<(), E>,
+    log: impl FnOnce(String),
+) {
+    if let Err(e) = result {
+        log(format!("could not {what}: {e}"));
+    }
 }
 
 /// The star was clicked (not dragged). In M1 this opens Settings.
@@ -71,7 +102,9 @@ pub fn update_settings(
     let (saved, size_changed) = update_settings_impl(&state, settings)?;
     let _ = app.emit(star::SETTINGS_CHANGED_EVENT, &saved);
     if size_changed {
-        star::resize(&app, saved.star_size).map_err(|e| e.to_string())?;
+        // The settings are already saved; a window that could not resize is not an error.
+        let resized = star::resize(&app, saved.star_size);
+        log_best_effort("resize the star after saving settings", resized, |m| eprintln!("{m}"));
     }
     Ok(saved)
 }
@@ -183,9 +216,11 @@ pub async fn test_provider(
     provider: ProviderId,
 ) -> Result<String, String> {
     let _ = app.emit(star::STAR_STATE_EVENT, "thinking");
-    let result = test_provider_impl(&state, provider).await;
-    let _ = app.emit(star::STAR_STATE_EVENT, "idle");
-    result
+    // Back to idle however this ends: finished, failed, cancelled or panicked.
+    let _idle = OnDrop::new(|| {
+        let _ = app.emit(star::STAR_STATE_EVENT, "idle");
+    });
+    test_provider_impl(&state, provider).await
 }
 
 // ---- Ollama ----
@@ -202,11 +237,35 @@ pub async fn ollama_status_impl(state: &AppState, exe_hint: &Path) -> OllamaStat
     ollama_setup::status(&base_url, exe_hint).await
 }
 
+/// Holds the "a download is running" flag; releases it when dropped.
+struct PullSlot<'a>(&'a AtomicBool);
+
+impl<'a> PullSlot<'a> {
+    fn try_take(flag: &'a AtomicBool) -> Option<PullSlot<'a>> {
+        flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .ok()
+            .map(|_| PullSlot(flag))
+    }
+}
+
+impl Drop for PullSlot<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
 pub async fn pull_ollama_model_impl(
     state: &AppState,
     model: &str,
     on_progress: &mut (dyn FnMut(PullProgress) + Send),
 ) -> Result<(), String> {
+    let model = model.trim();
+    if model.is_empty() {
+        return Err("Choose a model to download".to_string());
+    }
+    let Some(_slot) = PullSlot::try_take(&state.pull_active) else {
+        return Err("A download is already in progress".to_string());
+    };
     let base_url = get_settings_impl(state).ollama_base_url;
     ollama_setup::pull(&base_url, model, on_progress).await.map_err(|e| e.to_string())
 }
@@ -262,7 +321,8 @@ pub fn finish_first_run(app: AppHandle, state: State<'_, AppState>) -> Result<()
     let saved = finish_first_run_impl(&state)?;
     let _ = app.emit(star::SETTINGS_CHANGED_EVENT, &saved);
     if let Some(window) = app.get_webview_window(star::FIRSTRUN_LABEL) {
-        window.close().map_err(|e| e.to_string())?;
+        // First run is already saved as done; a window that would not close is not an error.
+        log_best_effort("close the first-run window", window.close(), |m| eprintln!("{m}"));
     }
     Ok(())
 }
@@ -275,18 +335,17 @@ mod tests {
     use crate::store::AppStore;
     use crate::AppState;
     use std::path::Path;
-    use std::sync::{Arc, Mutex};
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::sync::atomic::Ordering;
+    use std::sync::Arc;
+    use std::time::Duration;
     use wiremock::matchers::{body_partial_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn state_with(settings: Settings, service: &str) -> (tempfile::TempDir, AppState) {
         let dir = tempfile::tempdir().unwrap();
         let store = AppStore::open(dir.path().to_path_buf()).unwrap();
-        let state = AppState {
-            store,
-            settings: Mutex::new(settings),
-            secrets: crate::secrets::Secrets::new(service),
-        };
+        let state = AppState::new(store, settings, crate::secrets::Secrets::new(service));
         (dir, state)
     }
 
@@ -518,6 +577,140 @@ mod tests {
         assert_eq!(seen.len(), 2);
         assert_eq!(seen[0].completed, Some(1));
         assert_eq!(seen[1].status, "success");
+    }
+
+    const PULL_OK: &str = "{\"status\":\"success\"}\n";
+
+    async fn mount_pull(server: &MockServer, response: ResponseTemplate, expected: u64) {
+        Mock::given(method("POST"))
+            .and(path("/api/pull"))
+            .respond_with(response)
+            .expect(expected)
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn second_pull_is_refused_while_one_is_running() {
+        let server = MockServer::start().await;
+        mount_pull(
+            &server,
+            ResponseTemplate::new(200)
+                .set_body_string(PULL_OK)
+                .set_delay(Duration::from_millis(600)),
+            1,
+        )
+        .await;
+        let (_d, st) = state_for(&server);
+        let mut on_first = |_| {};
+        let first = pull_ollama_model_impl(&st, "tiny:1b", &mut on_first);
+        let second = async {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            pull_ollama_model_impl(&st, "other:1b", &mut |_| {}).await
+        };
+        let (first, second) = tokio::join!(first, second);
+        assert_eq!(first, Ok(()));
+        assert_eq!(second, Err("A download is already in progress".to_string()));
+        // `expect(1)` on the mock proves the refused pull never sent a request.
+    }
+
+    #[tokio::test]
+    async fn pull_flag_is_released_after_success_and_after_error() {
+        let server = MockServer::start().await;
+        mount_pull(&server, ResponseTemplate::new(200).set_body_string(PULL_OK), 1).await;
+        let (_d, st) = state_for(&server);
+        pull_ollama_model_impl(&st, "tiny:1b", &mut |_| {}).await.unwrap();
+        assert!(!st.pull_active.load(Ordering::SeqCst), "released after success");
+        server.reset().await;
+
+        mount_pull(&server, ResponseTemplate::new(500).set_body_string("boom"), 1).await;
+        let err = pull_ollama_model_impl(&st, "tiny:1b", &mut |_| {}).await.unwrap_err();
+        assert!(err.contains("500"), "{err}");
+        assert!(!st.pull_active.load(Ordering::SeqCst), "released after error");
+        server.reset().await;
+
+        mount_pull(&server, ResponseTemplate::new(200).set_body_string(PULL_OK), 1).await;
+        pull_ollama_model_impl(&st, "tiny:1b", &mut |_| {}).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn pull_flag_is_released_when_the_pull_is_dropped() {
+        let server = MockServer::start().await;
+        mount_pull(
+            &server,
+            ResponseTemplate::new(200)
+                .set_body_string(PULL_OK)
+                .set_delay(Duration::from_secs(5)),
+            1,
+        )
+        .await;
+        let (_d, st) = state_for(&server);
+        let cut_short = tokio::time::timeout(
+            Duration::from_millis(200),
+            pull_ollama_model_impl(&st, "tiny:1b", &mut |_| {}),
+        )
+        .await;
+        assert!(cut_short.is_err(), "the pull should still be running when dropped");
+        assert!(!st.pull_active.load(Ordering::SeqCst), "released when dropped");
+    }
+
+    #[tokio::test]
+    async fn blank_model_is_rejected_before_any_request() {
+        let server = MockServer::start().await;
+        mount_pull(&server, ResponseTemplate::new(200).set_body_string(PULL_OK), 0).await;
+        let (_d, st) = state_for(&server);
+        for blank in ["", "   ", "\t\n"] {
+            let err = pull_ollama_model_impl(&st, blank, &mut |_| {}).await.unwrap_err();
+            assert_eq!(err, "Choose a model to download", "{blank:?}");
+        }
+        assert!(!st.pull_active.load(Ordering::SeqCst));
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn model_name_is_trimmed_before_it_is_sent() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/pull"))
+            .and(body_partial_json(serde_json::json!({ "model": "tiny:1b" })))
+            .respond_with(ResponseTemplate::new(200).set_body_string(PULL_OK))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let (_d, st) = state_for(&server);
+        pull_ollama_model_impl(&st, "  tiny:1b \n", &mut |_| {}).await.unwrap();
+    }
+
+    #[test]
+    fn on_drop_runs_on_normal_drop() {
+        let ran = std::cell::Cell::new(0);
+        {
+            let _g = OnDrop::new(|| ran.set(ran.get() + 1));
+            assert_eq!(ran.get(), 0, "not before the drop");
+        }
+        assert_eq!(ran.get(), 1);
+    }
+
+    #[test]
+    fn on_drop_runs_while_unwinding_from_a_panic() {
+        let ran = std::sync::atomic::AtomicBool::new(false);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let _g = OnDrop::new(|| ran.store(true, Ordering::SeqCst));
+            panic!("boom");
+        }));
+        assert!(result.is_err());
+        assert!(ran.load(Ordering::SeqCst), "guard ran during the unwind");
+    }
+
+    #[test]
+    fn failure_after_a_successful_save_is_logged_not_returned() {
+        let mut logged = Vec::new();
+        log_best_effort("resize the star", Err::<(), _>("window is gone"), |m| logged.push(m));
+        assert_eq!(logged, vec!["could not resize the star: window is gone"]);
+
+        let mut quiet = Vec::new();
+        log_best_effort("resize the star", Ok::<(), String>(()), |m| quiet.push(m));
+        assert!(quiet.is_empty());
     }
 
     #[test]

@@ -9,6 +9,7 @@ pub mod tray;
 
 use secrets::Secrets;
 use settings::Settings;
+use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 use store::AppStore;
 use tauri::Manager;
@@ -17,6 +18,22 @@ pub struct AppState {
     pub store: AppStore,
     pub settings: Mutex<Settings>,
     pub secrets: Secrets,
+    /// Set while a model download is running; only one runs at a time.
+    pub pull_active: AtomicBool,
+    /// Windows (Settings, first run) that are being built right now.
+    pub opening: star::OpeningWindows,
+}
+
+impl AppState {
+    pub fn new(store: AppStore, settings: Settings, secrets: Secrets) -> AppState {
+        AppState {
+            store,
+            settings: Mutex::new(settings),
+            secrets,
+            pull_active: AtomicBool::new(false),
+            opening: star::OpeningWindows::default(),
+        }
+    }
 }
 
 pub fn run() {
@@ -54,11 +71,11 @@ pub fn run() {
                 format!("Star could not open its data folder at {}: {e}", data_dir.display())
             })?;
             let settings = settings::load(&store);
-            app.manage(AppState {
+            app.manage(AppState::new(
                 store,
-                settings: Mutex::new(settings.clone()),
-                secrets: Secrets::new("com.desktopstar.app"),
-            });
+                settings.clone(),
+                Secrets::new("com.desktopstar.app"),
+            ));
             star::create(app.handle(), &settings)?;
             tray::build(app.handle())?;
             if !settings.first_run_done {
