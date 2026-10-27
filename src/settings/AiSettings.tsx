@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { clearApiKey, hasApiKey, listModels, setApiKey, testProvider } from "../lib/ipc";
+import {
+  clearApiKey,
+  hasApiKey,
+  listModels,
+  ollamaStatus,
+  openOllamaDownload,
+  setApiKey,
+  testProvider,
+} from "../lib/ipc";
 import type { ProviderId } from "../lib/types";
 import { errorText, useSettings } from "./useSettings";
 
@@ -13,11 +21,36 @@ const PROVIDERS: Array<{ id: ProviderId; label: string }> = [
   { id: "anthropic", label: "Claude" },
 ];
 
+// An error to show. `getOllama` adds the "Get Ollama" button for a missing install.
+interface Problem {
+  text: string;
+  getOllama?: boolean;
+}
+
 type TestResult =
   | { kind: "idle" }
   | { kind: "running" }
   | { kind: "ok"; text: string }
-  | { kind: "error"; text: string };
+  | { kind: "error"; problem: Problem };
+
+// When the local AI fails, find out whether Ollama is simply not running or not
+// installed and say so; otherwise show the original error word for word.
+async function explain(provider: ProviderId, err: unknown): Promise<Problem> {
+  const original = { text: errorText(err) };
+  if (provider !== "ollama") return original;
+  try {
+    const status = await ollamaStatus();
+    if (status.state === "notRunning") {
+      return { text: "Ollama isn't running — start it from the Start menu, then press Refresh" };
+    }
+    if (status.state === "notInstalled") {
+      return { text: "Ollama isn't installed yet", getOllama: true };
+    }
+  } catch {
+    // Fall through to the original error.
+  }
+  return original;
+}
 
 // Provider, model, API key and connection test. Shared by the Settings window
 // and the first-run screen (`compact` drops the extra options).
@@ -37,7 +70,9 @@ export function AiSettings(props: { compact?: boolean }) {
   const [keyError, setKeyError] = useState<string | null>(null);
   const [models, setModels] = useState<string[]>([]);
   const [modelsBusy, setModelsBusy] = useState(false);
-  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [modelsError, setModelsError] = useState<Problem | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
   const [test, setTest] = useState<TestResult>({ kind: "idle" });
 
   // Always the provider on screen, so a slow answer for a provider the user has
@@ -52,11 +87,16 @@ export function AiSettings(props: { compact?: boolean }) {
     setModelsError(null);
     try {
       const list = await listModels(p);
-      if (id === modelRequest.current) setModels(list);
+      if (id === modelRequest.current) {
+        setModels(list);
+        setModelsLoaded(true);
+      }
     } catch (e) {
+      const problem = await explain(p, e);
       if (id === modelRequest.current) {
         setModels([]);
-        setModelsError(errorText(e));
+        setModelsLoaded(false);
+        setModelsError(problem);
       }
     } finally {
       if (id === modelRequest.current) setModelsBusy(false);
@@ -69,8 +109,13 @@ export function AiSettings(props: { compact?: boolean }) {
     setKeyInput("");
     setKeyError(null);
     setTest({ kind: "idle" });
+    // Drop any model request still in flight for the previous provider.
+    ++modelRequest.current;
+    setModelsBusy(false);
     setModels([]);
+    setModelsLoaded(false);
     setModelsError(null);
+    setOpenError(null);
     setKeySaved(null);
     if (provider === "ollama") {
       void loadModels(provider);
@@ -95,7 +140,10 @@ export function AiSettings(props: { compact?: boolean }) {
   }
 
   const savedModel = settings.models[provider] ?? (provider === "ollama" ? DEFAULT_LOCAL_MODEL : "");
+  // Only for Ollama, and only once the installed list is known.
+  const notDownloaded = provider === "ollama" && modelsLoaded && !models.includes(savedModel);
   const modelOptions = savedModel && !models.includes(savedModel) ? [savedModel, ...models] : models;
+  const optionLabel = (m: string) => (m === savedModel && notDownloaded ? `${m} (not downloaded)` : m);
 
   async function onSaveKey(e: FormEvent) {
     e.preventDefault();
@@ -127,7 +175,9 @@ export function AiSettings(props: { compact?: boolean }) {
       setKeyInput("");
       setKeySaved(false);
       setModels([]);
+      setModelsLoaded(false);
       setModelsError(null);
+      setTest({ kind: "idle" });
     } catch (err) {
       if (current.current === p) setKeyError(errorText(err));
     } finally {
@@ -142,8 +192,34 @@ export function AiSettings(props: { compact?: boolean }) {
       const reply = await testProvider(p);
       if (current.current === p) setTest({ kind: "ok", text: reply });
     } catch (err) {
-      if (current.current === p) setTest({ kind: "error", text: errorText(err) });
+      const problem = await explain(p, err);
+      if (current.current === p) setTest({ kind: "error", problem });
     }
+  }
+
+  async function onGetOllama() {
+    setOpenError(null);
+    try {
+      await openOllamaDownload();
+    } catch (err) {
+      setOpenError(errorText(err));
+    }
+  }
+
+  function renderProblem(problem: Problem) {
+    return (
+      <>
+        <p role="alert" className="error">{problem.text}</p>
+        {problem.getOllama && (
+          <div className="row">
+            <button type="button" onClick={() => void onGetOllama()}>
+              Get Ollama (free, runs on this laptop)
+            </button>
+          </div>
+        )}
+        {problem.getOllama && openError && <p role="alert" className="error">{openError}</p>}
+      </>
+    );
   }
 
   return (
@@ -200,7 +276,7 @@ export function AiSettings(props: { compact?: boolean }) {
             {savedModel === "" && <option value="">Choose a model</option>}
             {modelOptions.map((m) => (
               <option key={m} value={m}>
-                {m}
+                {optionLabel(m)}
               </option>
             ))}
           </select>
@@ -212,7 +288,7 @@ export function AiSettings(props: { compact?: boolean }) {
             Refresh
           </button>
         </div>
-        {modelsError && <p role="alert" className="error">{modelsError}</p>}
+        {modelsError && renderProblem(modelsError)}
       </div>
 
       <div className="field">
@@ -223,7 +299,7 @@ export function AiSettings(props: { compact?: boolean }) {
           {test.kind === "running" && <span className="muted">Testing…</span>}
           {test.kind === "ok" && <span role="status" className="ok">Connected: {test.text}</span>}
         </div>
-        {test.kind === "error" && <p role="alert" className="error">{test.text}</p>}
+        {test.kind === "error" && renderProblem(test.problem)}
       </div>
 
       {!props.compact && (

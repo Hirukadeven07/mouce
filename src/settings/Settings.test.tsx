@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Settings } from "../lib/types";
@@ -39,6 +39,9 @@ describe("Settings", () => {
     vi.mocked(ipc.listModels).mockResolvedValue([]);
     vi.mocked(ipc.getAutostart).mockResolvedValue(false);
     vi.mocked(ipc.setApiKey).mockResolvedValue(undefined);
+    vi.mocked(ipc.clearApiKey).mockResolvedValue(undefined);
+    vi.mocked(ipc.ollamaStatus).mockResolvedValue({ state: "running", models: [] });
+    vi.mocked(ipc.openOllamaDownload).mockResolvedValue(undefined);
   });
 
   it("lists five providers", async () => {
@@ -116,5 +119,138 @@ describe("Settings", () => {
   it("defaults the Ollama model to gemma3:4b", async () => {
     await renderSettings();
     expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe("gemma3:4b");
+  });
+
+  it("a slow model list for the old provider never fills the new provider", async () => {
+    const user = userEvent.setup();
+    let resolveOld: (m: string[]) => void = () => {};
+    vi.mocked(ipc.listModels).mockImplementation(
+      () => new Promise<string[]>((resolve) => (resolveOld = resolve)),
+    );
+    await renderSettings();
+    await user.selectOptions(screen.getByLabelText("Provider"), "Claude");
+    await screen.findByText("No key yet");
+
+    await act(async () => resolveOld(["gemma3:4b", "llama3"]));
+
+    const select = screen.getByLabelText("Model") as HTMLSelectElement;
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a model"]);
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
+  });
+
+  it("explains that Ollama is not running when the model list fails", async () => {
+    vi.mocked(ipc.listModels).mockRejectedValue("connection refused");
+    vi.mocked(ipc.ollamaStatus).mockResolvedValue({ state: "notRunning" });
+    await renderSettings();
+    expect(
+      await screen.findByText("Ollama isn't running — start it from the Start menu, then press Refresh"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("connection refused")).not.toBeInTheDocument();
+  });
+
+  it("explains that Ollama is not installed and offers the download", async () => {
+    const user = userEvent.setup();
+    vi.mocked(ipc.testProvider).mockRejectedValue("connection refused");
+    vi.mocked(ipc.ollamaStatus).mockResolvedValue({ state: "notInstalled" });
+    await renderSettings();
+    await user.click(screen.getByRole("button", { name: "Test connection" }));
+    await screen.findByText("Ollama isn't installed yet");
+    await user.click(screen.getByRole("button", { name: "Get Ollama (free, runs on this laptop)" }));
+    expect(ipc.openOllamaDownload).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the original Ollama error when Ollama is running", async () => {
+    vi.mocked(ipc.listModels).mockRejectedValue("something odd");
+    await renderSettings();
+    expect(await screen.findByText("something odd")).toBeInTheDocument();
+  });
+
+  it("an older settings-changed event cannot flip an optimistic control back", async () => {
+    const user = userEvent.setup();
+    const listeners: Array<(s: Settings) => void> = [];
+    vi.mocked(ipc.onSettingsChanged).mockImplementation(async (cb) => {
+      listeners.push(cb);
+      return () => {};
+    });
+    let finish: (s: Settings) => void = () => {};
+    vi.mocked(ipc.updateSettings).mockImplementation(
+      () => new Promise<Settings>((resolve) => (finish = resolve)),
+    );
+    await renderSettings();
+    await user.click(screen.getByRole("checkbox", { name: "Rotate" }));
+    expect(screen.getByRole("checkbox", { name: "Rotate" })).not.toBeChecked();
+
+    expect(listeners.length).toBeGreaterThan(0);
+    act(() => listeners.forEach((cb) => cb({ ...baseSettings, star_rotation: true })));
+    expect(screen.getByRole("checkbox", { name: "Rotate" })).not.toBeChecked();
+
+    await act(async () => finish({ ...baseSettings, star_rotation: false }));
+    expect(screen.getByRole("checkbox", { name: "Rotate" })).not.toBeChecked();
+  });
+
+  it("shows the privacy sentence", async () => {
+    await renderSettings();
+    expect(
+      screen.getByText(
+        "Screen captures are only sent to the AI you pick above. Star cannot open, change, or delete your files.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("disables the startup checkbox while a change is pending", async () => {
+    const user = userEvent.setup();
+    let finish: () => void = () => {};
+    vi.mocked(ipc.setAutostart).mockImplementation(() => new Promise<void>((r) => (finish = r)));
+    await renderSettings();
+    const box = screen.getByRole("checkbox", { name: "Start Star when Windows starts" });
+    await user.click(box);
+    expect(box).toBeDisabled();
+    expect(box).toBeChecked();
+    await act(async () => finish());
+    expect(box).toBeEnabled();
+    expect(box).toBeChecked();
+    expect(ipc.setAutostart).toHaveBeenCalledTimes(1);
+  });
+
+  it("reverts the startup checkbox to the real value when the change fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(ipc.getAutostart).mockReset();
+    vi.mocked(ipc.getAutostart).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    vi.mocked(ipc.setAutostart).mockRejectedValue("Access is denied");
+    await renderSettings();
+    const box = screen.getByRole("checkbox", { name: "Start Star when Windows starts" });
+    await user.click(box);
+    expect(await screen.findByText("Access is denied")).toBeInTheDocument();
+    await waitFor(() => expect(box).toBeEnabled());
+    expect(box).toBeChecked();
+    expect(ipc.getAutostart).toHaveBeenCalledTimes(2);
+  });
+
+  it("removing the key clears the connection test result", async () => {
+    const user = userEvent.setup();
+    vi.mocked(ipc.getSettings).mockResolvedValue({ ...baseSettings, provider: "openai" });
+    vi.mocked(ipc.hasApiKey).mockResolvedValue(true);
+    vi.mocked(ipc.testProvider).mockResolvedValue("ready");
+    await renderSettings();
+    await screen.findByText("Key saved");
+    await user.click(screen.getByRole("button", { name: "Test connection" }));
+    await screen.findByText("Connected: ready");
+    await user.click(screen.getByRole("button", { name: "Remove key" }));
+    await screen.findByText("No key yet");
+    expect(screen.queryByText("Connected: ready")).not.toBeInTheDocument();
+  });
+
+  it("labels an Ollama model that is not installed", async () => {
+    vi.mocked(ipc.listModels).mockResolvedValue(["llama3"]);
+    await renderSettings();
+    expect(await screen.findByRole("option", { name: "gemma3:4b (not downloaded)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "llama3" })).toBeInTheDocument();
+  });
+
+  it("does not label an installed Ollama model", async () => {
+    vi.mocked(ipc.listModels).mockResolvedValue(["gemma3:4b"]);
+    await renderSettings();
+    await screen.findByRole("option", { name: "gemma3:4b" });
+    expect(screen.queryByText(/not downloaded/)).not.toBeInTheDocument();
   });
 });

@@ -15,6 +15,7 @@ export function Settings() {
   const ids = { size: useId(), rotate: useId(), history: useId(), startup: useId() };
   const [autostart, setAutostartState] = useState<boolean | null>(null);
   const [autostartError, setAutostartError] = useState<string | null>(null);
+  const [autostartBusy, setAutostartBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,13 +29,21 @@ export function Settings() {
 
   async function onAutostart(enabled: boolean) {
     const before = autostart;
+    setAutostartBusy(true);
     setAutostartState(enabled);
     setAutostartError(null);
     try {
       await setAutostart(enabled);
     } catch (e) {
-      setAutostartState(before);
       setAutostartError(errorText(e));
+      // Show what Windows really has, not what we hoped for.
+      try {
+        setAutostartState(await getAutostart());
+      } catch {
+        setAutostartState(before);
+      }
+    } finally {
+      setAutostartBusy(false);
     }
   }
 
@@ -112,7 +121,7 @@ export function Settings() {
             id={ids.startup}
             type="checkbox"
             checked={autostart === true}
-            disabled={autostart === null}
+            disabled={autostart === null || autostartBusy}
             onChange={(e) => void onAutostart(e.target.checked)}
           />
           <label htmlFor={ids.startup}>Start Star when Windows starts</label>

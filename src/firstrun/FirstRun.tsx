@@ -39,7 +39,12 @@ function ChooseAi(props: { onNext: () => void }) {
       const s = await ollamaStatus();
       if (mounted.current && id === request.current) setStatus(s);
     } catch (e) {
-      if (mounted.current && id === request.current) setStatusError(errorText(e));
+      if (quiet) {
+        // A background re-check failing must not undo what the screen already shows.
+        console.error("Could not re-check Ollama", e);
+      } else if (mounted.current && id === request.current) {
+        setStatusError(errorText(e));
+      }
     }
   }, []);
 
@@ -79,9 +84,10 @@ function ChooseAi(props: { onNext: () => void }) {
 
   const pct = pull.phase === "running" ? percent(pull.progress) : null;
   const pulling = pull.phase === "running";
-  const needsModel =
-    status?.state === "running" && !status.models.includes(DEFAULT_LOCAL_MODEL);
-  const ready = status?.state === "running" && !needsModel;
+  const hasModel = status?.state === "running" && status.models.includes(DEFAULT_LOCAL_MODEL);
+  // A finished download counts even if the follow-up status check could not run.
+  const ready = pull.phase === "done" || hasModel;
+  const needsModel = !ready && status?.state === "running";
 
   const onlineButton = (
     <button type="button" onClick={() => setOnline(true)} disabled={online}>
@@ -93,8 +99,8 @@ function ChooseAi(props: { onNext: () => void }) {
     <>
       <h1>Choose your AI</h1>
 
-      {status === null && statusError === null && <p role="status">Checking for Ollama…</p>}
-      {statusError && (
+      {status === null && statusError === null && !ready && <p role="status">Checking for Ollama…</p>}
+      {statusError && !ready && (
         <>
           <p role="alert" className="error">{statusError}</p>
           <div className="row">
@@ -104,7 +110,7 @@ function ChooseAi(props: { onNext: () => void }) {
         </>
       )}
 
-      {status?.state === "notInstalled" && (
+      {!ready && status?.state === "notInstalled" && (
         <>
           <p>Star can use a free AI that runs on this laptop, or an online AI with your own key.</p>
           <div className="row">
@@ -117,7 +123,7 @@ function ChooseAi(props: { onNext: () => void }) {
         </>
       )}
 
-      {status?.state === "notRunning" && (
+      {!ready && status?.state === "notRunning" && (
         <>
           <p>
             Ollama is installed but not running — start it from the Start menu, then press Check
@@ -156,7 +162,7 @@ function ChooseAi(props: { onNext: () => void }) {
 
       {ready && (
         <>
-          <p role="status">Local AI is ready ({DEFAULT_LOCAL_MODEL}).</p>
+          <p role="status">{DEFAULT_LOCAL_MODEL} is ready.</p>
           <div className="row">{onlineButton}</div>
         </>
       )}
@@ -169,8 +175,8 @@ function ChooseAi(props: { onNext: () => void }) {
 
       {(status !== null || statusError !== null) && (
         <div className="footer">
-          <button type="button" className="primary" onClick={props.onNext}>
-            {needsModel && !pulling ? "Skip" : "Next"}
+          <button type="button" className="primary" disabled={pulling} onClick={props.onNext}>
+            {needsModel ? "Skip" : "Next"}
           </button>
         </div>
       )}

@@ -18,6 +18,9 @@ export function useSettings() {
   const latest = useRef<Settings | null>(null);
   const seq = useRef(0);
   const mounted = useRef(true);
+  // Saves still waiting for the backend. While any are, incoming change events
+  // are only echoes of older state and must not undo what the user just chose.
+  const pending = useRef(0);
 
   const apply = useCallback((s: Settings) => {
     latest.current = s;
@@ -26,7 +29,9 @@ export function useSettings() {
 
   useEffect(() => {
     mounted.current = true;
-    const unlisten = onSettingsChanged((s) => mounted.current && apply(s)).catch(() => null);
+    const unlisten = onSettingsChanged((s) => {
+      if (mounted.current && pending.current === 0) apply(s);
+    }).catch(() => null);
     getSettings()
       .then((s) => {
         if (mounted.current && latest.current === null) apply(s);
@@ -44,6 +49,7 @@ export function useSettings() {
       if (!base) return;
       const next = { ...base, ...patch };
       const id = ++seq.current;
+      pending.current += 1;
       apply(next);
       setError(null);
       try {
@@ -57,6 +63,8 @@ export function useSettings() {
         } catch {
           // Keep showing what we have; the error above says the save failed.
         }
+      } finally {
+        pending.current -= 1;
       }
     },
     [apply],

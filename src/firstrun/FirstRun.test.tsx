@@ -185,4 +185,57 @@ describe("FirstRun", () => {
     await waitFor(() => expect(ipc.finishFirstRun).toHaveBeenCalled());
     expect(ipc.setAutostart).toHaveBeenCalledWith(false);
   });
+
+  it("a failed autostart change is shown and a second Done finishes without it", async () => {
+    const user = userEvent.setup();
+    setStatus({ state: "running", models: ["gemma3:4b"] });
+    vi.mocked(ipc.setAutostart).mockRejectedValue("Access is denied");
+    render(<FirstRun />);
+    await toStepTwo(user);
+    await screen.findByText(/ready/i);
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(await screen.findByRole("button", { name: "Done" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Access is denied");
+    expect(ipc.finishFirstRun).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(ipc.finishFirstRun).toHaveBeenCalledTimes(1));
+    expect(ipc.setAutostart).toHaveBeenCalledTimes(1);
+  });
+
+  it("cannot leave step two while a download runs", async () => {
+    const user = userEvent.setup();
+    setStatus({ state: "running", models: [] });
+    let finish: () => void = () => {};
+    vi.mocked(ipc.pullOllamaModel).mockImplementation(() => new Promise<void>((r) => (finish = r)));
+    render(<FirstRun />);
+    await toStepTwo(user);
+
+    await user.click(await screen.findByRole("button", { name: "Download gemma3:4b (about 3 GB)" }));
+    expect(screen.getByRole("button", { name: "Skip" })).toBeDisabled();
+
+    setStatus({ state: "running", models: ["gemma3:4b"] });
+    await act(async () => finish());
+    expect(await screen.findByRole("button", { name: "Next" })).toBeEnabled();
+  });
+
+  it("a failed re-check after a successful download still shows success", async () => {
+    const user = userEvent.setup();
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(ipc.ollamaStatus)
+      .mockResolvedValueOnce({ state: "running", models: [] })
+      .mockRejectedValueOnce("status check failed");
+    vi.mocked(ipc.pullOllamaModel).mockResolvedValue(undefined);
+    render(<FirstRun />);
+    await toStepTwo(user);
+
+    await user.click(await screen.findByRole("button", { name: "Download gemma3:4b (about 3 GB)" }));
+    await screen.findByText("gemma3:4b is ready.");
+    await waitFor(() => expect(logged).toHaveBeenCalled());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Download gemma3:4b/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+    logged.mockRestore();
+  });
 });
