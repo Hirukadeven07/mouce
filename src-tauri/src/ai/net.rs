@@ -629,6 +629,39 @@ last").await;
         u(&format!("http://{addr}/"))
     }
 
+    /// Serves one chunked response of `lines`, one line per chunk, `gap` apart, then ends it.
+    fn trickling_server(lines: &'static [&'static str], gap: Duration) -> Url {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let Ok((mut sock, _)) = listener.accept() else { return };
+            let mut buf = [0u8; 4096];
+            let mut seen = Vec::new();
+            while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+                match sock.read(&mut buf) {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => seen.extend_from_slice(&buf[..n]),
+                }
+            }
+            let head = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+            if sock.write_all(head.as_bytes()).is_err() {
+                return;
+            }
+            for (i, line) in lines.iter().enumerate() {
+                if i > 0 {
+                    std::thread::sleep(gap);
+                }
+                let chunk = format!("{:x}\r\n{line}\n\r\n", line.len() + 1);
+                if sock.write_all(chunk.as_bytes()).is_err() || sock.flush().is_err() {
+                    return;
+                }
+            }
+            let _ = sock.write_all(b"0\r\n\r\n");
+        });
+        u(&format!("http://{addr}/"))
+    }
+
     #[tokio::test]
     async fn read_stream_times_out_when_connection_goes_silent() {
         let url = stalling_server(Duration::from_millis(1500));
@@ -651,14 +684,19 @@ last").await;
 
     #[tokio::test]
     async fn read_stream_idle_timer_resets_on_each_chunk() {
-        let (_server, resp) = body_response("a\nb\n").await;
+        // Three lines 150 ms apart: the whole stream takes about 300 ms, longer than the
+        // 200 ms idle limit, but no single silence is. A whole-stream deadline would fail.
+        let url = trickling_server(&["a", "b", "c"], Duration::from_millis(150));
+        let resp = send(client().get(url.clone()), &url).await.unwrap();
         let mut seen = Vec::new();
+        let started = std::time::Instant::now();
         read_stream_with_idle(resp, Duration::from_millis(200), |line| {
             seen.push(line.to_string());
             Ok(LineOutcome::Continue)
         })
         .await
         .unwrap();
-        assert_eq!(seen, vec!["a", "b"]);
+        assert_eq!(seen, vec!["a", "b", "c"]);
+        assert!(started.elapsed() > Duration::from_millis(200), "{:?}", started.elapsed());
     }
 }
