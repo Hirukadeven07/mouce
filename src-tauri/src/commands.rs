@@ -376,6 +376,7 @@ mod tests {
 
     #[test]
     fn api_key_commands_trim_reject_blank_and_clear() {
+        let _lock = crate::secrets::test_support::lock_credential_store();
         let service = "com.desktopstar.app.test.commands.api_key";
         let (_d, st) = state_with(Settings::default(), service);
         let g = Cleanup(st);
