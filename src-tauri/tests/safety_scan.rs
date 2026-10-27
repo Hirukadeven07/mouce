@@ -158,20 +158,59 @@ fn no_command_returns_an_api_key() {
     assert!(!lib.contains("get_api_key"), "lib.rs must not register get_api_key");
 }
 
+/// Every way the opener plugin can be reached: its crate path, its extension trait,
+/// the `.opener()` accessor and the `open_url` function.
+fn opener_mentions(text: &str) -> Vec<&'static str> {
+    ["tauri_plugin_opener::", "OpenerExt", ".opener()", "open_url"]
+        .into_iter()
+        .filter(|p| text.contains(p))
+        .collect()
+}
+
 #[test]
 fn opener_is_only_used_for_the_fixed_download_url() {
     let src = manifest_dir().join("src");
     let mut files = Vec::new();
     rust_files(&src, &mut files);
-    let users: Vec<_> = files
-        .iter()
-        .filter(|f| fs::read_to_string(f).unwrap().contains(".opener()"))
-        .collect();
-    assert_eq!(users, vec![&src.join("commands.rs")], "opener used outside commands.rs");
-    let commands = fs::read_to_string(src.join("commands.rs")).unwrap();
-    // One use in the command, one mention in this guard's own source is not scanned here.
-    assert_eq!(commands.matches(".opener()").count(), 1);
+    let lib_rs = src.join("lib.rs");
+    let commands_rs = src.join("commands.rs");
+
+    let mut failures = Vec::new();
+    for file in &files {
+        let rel = file.strip_prefix(&src).unwrap_or(file).display().to_string();
+        let text = fs::read_to_string(file).unwrap();
+        if *file == lib_rs {
+            // Plugin registration only: `tauri_plugin_opener::init()` and nothing else.
+            let stripped = text.replace("tauri_plugin_opener::init()", "");
+            let found = opener_mentions(&stripped);
+            if !found.is_empty() {
+                failures.push(format!("{rel}: opener used beyond plugin registration: {found:?}"));
+            }
+        } else if *file != commands_rs {
+            let found = opener_mentions(&text);
+            if !found.is_empty() {
+                failures.push(format!("{rel}: opener used outside commands.rs: {found:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "opener guard failed:
+{}", failures.join("
+"));
+
+    // lib.rs still registers the plugin.
+    let lib = fs::read_to_string(&lib_rs).unwrap();
+    assert!(lib.contains("tauri_plugin_opener::init()"), "lib.rs must register the opener plugin");
+
+    // commands.rs: exactly one import and one call site, and the call uses the fixed URL.
+    let commands = fs::read_to_string(&commands_rs).unwrap();
+    assert_eq!(commands.matches("tauri_plugin_opener::").count(), 1, "one opener import only");
+    assert_eq!(commands.matches(".opener()").count(), 1, "one opener call site only");
+    assert_eq!(commands.matches("open_url(").count(), 1, "one open_url call only");
     assert!(commands.contains("open_url(OLLAMA_DOWNLOAD_URL"));
+    assert!(
+        commands.contains("\"https://ollama.com/download\""),
+        "commands.rs must contain the literal download URL"
+    );
 }
 
 fn capability_files(dir: &Path, out: &mut Vec<PathBuf>) {
