@@ -37,8 +37,10 @@ impl AnthropicProvider {
             .map_err(|_| AiError::Network("Invalid provider address".to_string()))
     }
 
-    fn authed(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        builder.header("x-api-key", &self.api_key).header("anthropic-version", API_VERSION)
+    fn authed(&self, builder: reqwest::RequestBuilder) -> Result<reqwest::RequestBuilder, AiError> {
+        Ok(builder
+            .header("x-api-key", net::secret_header(&self.api_key)?)
+            .header("anthropic-version", API_VERSION))
     }
 }
 
@@ -62,7 +64,10 @@ fn request_body(req: &ChatRequest) -> Value {
                     })
                 })
                 .collect();
-            content.push(json!({ "type": "text", "text": m.text }));
+            // Anthropic rejects empty text blocks, so an image-only message has none.
+            if !(m.text.trim().is_empty() && !m.images.is_empty()) {
+                content.push(json!({ "type": "text", "text": m.text }));
+            }
             json!({ "role": role, "content": content })
         })
         .collect();
@@ -112,7 +117,7 @@ impl Provider for AnthropicProvider {
         on_delta: &mut (dyn for<'a> FnMut(&'a str) + Send),
     ) -> Result<String, AiError> {
         let url = self.url("/v1/messages")?;
-        let builder = self.authed(self.client.post(url.clone())).json(&request_body(req));
+        let builder = self.authed(self.client.post(url.clone()))?.json(&request_body(req));
         let resp = net::send(builder, &url).await?;
         let mut full = String::new();
         net::read_stream(resp, |line| {
@@ -130,7 +135,7 @@ impl Provider for AnthropicProvider {
     async fn list_models(&self) -> Result<Vec<String>, AiError> {
         let mut url = self.url("/v1/models")?;
         url.query_pairs_mut().append_pair("limit", "1000");
-        let resp = net::send(self.authed(self.client.get(url.clone())), &url).await?;
+        let resp = net::send(self.authed(self.client.get(url.clone()))?, &url).await?;
         let text = resp.text().await.map_err(|e| AiError::Network(e.without_url().to_string()))?;
         let v: Value = serde_json::from_str(&text)
             .map_err(|_| AiError::Parse("unreadable model list".to_string()))?;
@@ -151,8 +156,21 @@ mod tests {
     use super::*;
     use crate::ai::{ChatMessage, ImageInput, Role};
     use serde_json::{json, Value};
-    use wiremock::matchers::{body_partial_json, header, method, path};
+    use wiremock::matchers::{body_partial_json, header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn anthropic_key_header_is_sensitive() {
+        let provider = AnthropicProvider::new("https://api.anthropic.com".into(), "a-test".into());
+        let built = provider
+            .authed(provider.client.get("https://api.anthropic.com/v1/models"))
+            .unwrap()
+            .build()
+            .unwrap();
+        let key = built.headers().get("x-api-key").expect("key header");
+        assert!(key.is_sensitive());
+        assert!(!built.headers().get("anthropic-version").unwrap().is_sensitive());
+    }
 
     fn request() -> ChatRequest {
         ChatRequest {
@@ -277,6 +295,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/v1/models"))
+            .and(query_param("limit", "1000"))
             .and(header("x-api-key", "a-test"))
             .and(header("anthropic-version", "2023-06-01"))
             .respond_with(
@@ -287,6 +306,39 @@ mod tests {
             .await;
         let provider = AnthropicProvider::new(server.uri(), "a-test".into());
         assert_eq!(provider.list_models().await.unwrap(), vec!["claude-b", "claude-a"]);
+    }
+
+    #[tokio::test]
+    async fn anthropic_image_only_message_has_no_text_block() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string("data: {\"type\":\"message_stop\"}\n\n"),
+            )
+            .mount(&server)
+            .await;
+        let provider = AnthropicProvider::new(server.uri(), "a-test".into());
+        let img = || ImageInput { mime: "image/png".into(), base64: "QUJD".into() };
+        let req = ChatRequest {
+            model: "claude-test".into(),
+            system: None,
+            messages: vec![
+                ChatMessage { role: Role::User, text: String::new(), images: vec![img()] },
+                ChatMessage { role: Role::User, text: " \n\t ".into(), images: vec![img()] },
+                ChatMessage { role: Role::User, text: "hi".into(), images: vec![] },
+            ],
+            max_tokens: 10,
+        };
+        provider.chat_stream(&req, &mut |_: &str| {}).await.unwrap();
+        let received = server.received_requests().await.unwrap();
+        let body: Value = serde_json::from_slice(&received[0].body).unwrap();
+        let image = json!({
+            "type": "image",
+            "source": { "type": "base64", "media_type": "image/png", "data": "QUJD" }
+        });
+        assert_eq!(body["messages"][0]["content"], json!([image.clone()]), "{body}");
+        assert_eq!(body["messages"][1]["content"], json!([image]), "{body}");
+        assert_eq!(body["messages"][2]["content"], json!([{ "type": "text", "text": "hi" }]));
     }
 
     #[tokio::test]

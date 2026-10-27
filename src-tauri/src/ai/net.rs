@@ -14,6 +14,10 @@ const REMOTE_HOSTS: &[&str] = &[
 
 const MAX_REDIRECTS: usize = 10;
 const MAX_ERROR_MESSAGE_CHARS: usize = 300;
+/// At most this much of an error body is read before parsing.
+const MAX_ERROR_BODY_BYTES: usize = 64 * 1024;
+/// A stream that stays silent this long is treated as stalled.
+const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Only approved provider hosts (https) and loopback (http or https) may be reached.
 pub fn check_allowed(url: &Url) -> Result<(), AiError> {
@@ -58,6 +62,16 @@ fn same_origin(a: &Url, b: &Url) -> bool {
     a.scheme() == b.scheme()
         && a.host_str() == b.host_str()
         && a.port_or_known_default() == b.port_or_known_default()
+}
+
+/// A header value holding a credential, marked sensitive so HTTP debug output (and any
+/// logging of the request) shows `Sensitive` instead of the key.
+pub fn secret_header(secret: &str) -> Result<reqwest::header::HeaderValue, AiError> {
+    let mut value = reqwest::header::HeaderValue::from_str(secret).map_err(|_| {
+        AiError::Network("The API key contains characters that cannot be sent".to_string())
+    })?;
+    value.set_sensitive(true);
+    Ok(value)
 }
 
 /// HTTP client: 10 s connect timeout, no overall timeout (responses stream).
@@ -124,18 +138,42 @@ pub async fn send(req: reqwest::RequestBuilder, url: &Url) -> Result<reqwest::Re
 /// Builds `AiError::Http`, preferring the provider's own message from the body.
 pub async fn error_from_response(resp: reqwest::Response) -> AiError {
     let status = resp.status().as_u16();
-    let body = resp.text().await.unwrap_or_default();
-    AiError::Http { status, message: error_message(&body) }
+    let reason = resp.status().canonical_reason();
+    let body = read_body_capped(resp, MAX_ERROR_BODY_BYTES).await;
+    AiError::Http { status, message: error_message(&String::from_utf8_lossy(&body), reason) }
 }
 
-fn error_message(body: &str) -> String {
-    let from_json = serde_json::from_str::<serde_json::Value>(body).ok().and_then(|v| {
+/// Reads at most `limit` bytes of the body, then stops (dropping the rest).
+async fn read_body_capped(resp: reqwest::Response, limit: usize) -> Vec<u8> {
+    let mut stream = resp.bytes_stream();
+    let mut body = Vec::new();
+    while body.len() < limit {
+        match stream.next().await {
+            Some(Ok(chunk)) => {
+                let room = limit - body.len();
+                body.extend_from_slice(&chunk[..chunk.len().min(room)]);
+            }
+            _ => break,
+        }
+    }
+    body
+}
+
+/// Picks the first non-blank message: the provider's own, then the body text,
+/// then the HTTP reason phrase. Every candidate is cut to 300 characters.
+fn error_message(body: &str, reason: Option<&str>) -> String {
+    let from_json = serde_json::from_str::<serde_json::Value>(body).ok().map(|v| {
         let pick = |x: Option<&serde_json::Value>| x.and_then(|s| s.as_str()).map(str::to_string);
-        pick(v.pointer("/error/message"))
-            .or_else(|| pick(v.get("error")))
-            .or_else(|| pick(v.get("message")))
+        [pick(v.pointer("/error/message")), pick(v.get("error")), pick(v.get("message"))]
     });
-    from_json.unwrap_or_else(|| body.trim().chars().take(MAX_ERROR_MESSAGE_CHARS).collect())
+    from_json
+        .into_iter()
+        .flatten()
+        .flatten()
+        .chain([body.to_string()])
+        .map(|m| m.trim().chars().take(MAX_ERROR_MESSAGE_CHARS).collect::<String>())
+        .find(|m| !m.trim().is_empty())
+        .unwrap_or_else(|| reason.unwrap_or("(no details)").to_string())
 }
 
 /// Accumulates raw stream bytes and yields complete, non-empty lines.
@@ -193,12 +231,23 @@ pub enum LineOutcome {
 /// ends; a stream that ends without `Stop` is still `Ok`.
 pub async fn read_stream(
     resp: reqwest::Response,
+    on_line: impl FnMut(&str) -> Result<LineOutcome, AiError>,
+) -> Result<(), AiError> {
+    read_stream_with_idle(resp, STREAM_IDLE_TIMEOUT, on_line).await
+}
+
+async fn read_stream_with_idle(
+    resp: reqwest::Response,
+    idle: Duration,
     mut on_line: impl FnMut(&str) -> Result<LineOutcome, AiError>,
 ) -> Result<(), AiError> {
     let mut stream = resp.bytes_stream();
     let mut lines = LineBuffer::new();
     loop {
-        match stream.next().await {
+        let next = tokio::time::timeout(idle, stream.next()).await.map_err(|_| {
+            AiError::Network("The connection stalled — no data for 120 seconds".to_string())
+        })?;
+        match next {
             Some(chunk) => {
                 let chunk = chunk.map_err(|e| AiError::Network(e.without_url().to_string()))?;
                 for line in lines.push(&chunk) {
@@ -231,6 +280,22 @@ mod tests {
 
     fn u(s: &str) -> Url {
         Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn secret_header_is_marked_sensitive() {
+        let value = secret_header("k-123").unwrap();
+        assert!(value.is_sensitive());
+        assert_eq!(value.as_bytes(), b"k-123");
+        assert_eq!(format!("{value:?}"), "Sensitive");
+    }
+
+    #[test]
+    fn secret_header_rejects_unsendable_keys_without_echoing_them() {
+        let err = secret_header("bad
+key-123").unwrap_err();
+        assert!(!err.to_string().contains("key-123"));
+        assert!(matches!(err, AiError::Network(_)));
     }
 
     #[test]
@@ -483,5 +548,181 @@ last").await;
         .await
         .unwrap();
         assert_eq!(seen, vec!["first", "last"]);
+    }
+
+    #[tokio::test]
+    async fn error_message_skips_blank_candidates_and_uses_reason_phrase() {
+        let server = MockServer::start().await;
+        let bodies: [(u16, &str); 4] = [
+            (400, r#"{"error":{"message":"   "},"message":"fallback"}"#),
+            (400, r#"{"error":{"message":""}}"#),
+            (401, ""),
+            (401, "  \n "),
+        ];
+        for (status, body) in bodies {
+            Mock::given(method("GET"))
+                .respond_with(ResponseTemplate::new(status).set_body_string(body))
+                .up_to_n_times(1)
+                .mount(&server)
+                .await;
+        }
+        let url = u(&server.uri());
+        let mut msgs = Vec::new();
+        for _ in 0..4 {
+            match send(client().get(url.clone()), &url).await.unwrap_err() {
+                AiError::Http { message, .. } => msgs.push(message),
+                e => panic!("{e:?}"),
+            }
+        }
+        assert_eq!(msgs[0], "fallback");
+        // Everything extracted is blank, so the raw body text is the answer.
+        assert_eq!(msgs[1], r#"{"error":{"message":""}}"#);
+        assert_eq!(msgs[2], "Unauthorized");
+        assert_eq!(msgs[3], "Unauthorized");
+    }
+
+    #[test]
+    fn error_message_without_reason_phrase_says_no_details() {
+        assert_eq!(error_message("", None), "(no details)");
+        assert_eq!(error_message(" ", Some("Teapot")), "Teapot");
+    }
+
+    #[tokio::test]
+    async fn error_message_from_json_is_truncated_char_safe() {
+        let server = MockServer::start().await;
+        // Multi-byte characters: a byte-based cut would panic or split one.
+        let long = "é".repeat(1000);
+        let body = serde_json::json!({ "error": { "message": long } }).to_string();
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(400).set_body_string(body))
+            .mount(&server)
+            .await;
+        let url = u(&server.uri());
+        match send(client().get(url.clone()), &url).await.unwrap_err() {
+            AiError::Http { message, .. } => assert_eq!(message, "é".repeat(300)),
+            e => panic!("{e:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn error_body_is_read_only_up_to_64_kib() {
+        let server = MockServer::start().await;
+        // The useful JSON sits beyond the cap, so it must never be seen.
+        let body = format!("{}{}", " ".repeat(MAX_ERROR_BODY_BYTES + 10), r#"{"message":"late"}"#);
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(403).set_body_string(body))
+            .mount(&server)
+            .await;
+        let url = u(&server.uri());
+        match send(client().get(url.clone()), &url).await.unwrap_err() {
+            AiError::Http { status, message } => {
+                assert_eq!(status, 403);
+                assert_eq!(message, "Forbidden");
+            }
+            e => panic!("{e:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_body_capped_stops_at_limit() {
+        let (_server, resp) = body_response("0123456789").await;
+        assert_eq!(read_body_capped(resp, 4).await, b"0123");
+    }
+
+    /// Serves one chunked response: a first line, then silence for `pause`.
+    /// (wiremock cannot pause mid-body, so this uses a bare loopback socket.)
+    fn stalling_server(pause: Duration) -> Url {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let Ok((mut sock, _)) = listener.accept() else { return };
+            let mut buf = [0u8; 4096];
+            let mut seen = Vec::new();
+            while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+                match sock.read(&mut buf) {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => seen.extend_from_slice(&buf[..n]),
+                }
+            }
+            let head = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nline\n\r\n";
+            if sock.write_all(head.as_bytes()).is_err() || sock.flush().is_err() {
+                return;
+            }
+            std::thread::sleep(pause);
+            let _ = sock.write_all(b"0\r\n\r\n");
+        });
+        u(&format!("http://{addr}/"))
+    }
+
+    /// Serves one chunked response of `lines`, one line per chunk, `gap` apart, then ends it.
+    fn trickling_server(lines: &'static [&'static str], gap: Duration) -> Url {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let Ok((mut sock, _)) = listener.accept() else { return };
+            let mut buf = [0u8; 4096];
+            let mut seen = Vec::new();
+            while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+                match sock.read(&mut buf) {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => seen.extend_from_slice(&buf[..n]),
+                }
+            }
+            let head = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+            if sock.write_all(head.as_bytes()).is_err() {
+                return;
+            }
+            for (i, line) in lines.iter().enumerate() {
+                if i > 0 {
+                    std::thread::sleep(gap);
+                }
+                let chunk = format!("{:x}\r\n{line}\n\r\n", line.len() + 1);
+                if sock.write_all(chunk.as_bytes()).is_err() || sock.flush().is_err() {
+                    return;
+                }
+            }
+            let _ = sock.write_all(b"0\r\n\r\n");
+        });
+        u(&format!("http://{addr}/"))
+    }
+
+    #[tokio::test]
+    async fn read_stream_times_out_when_connection_goes_silent() {
+        let url = stalling_server(Duration::from_millis(1500));
+        let resp = send(client().get(url.clone()), &url).await.unwrap();
+        let mut seen = Vec::new();
+        let started = std::time::Instant::now();
+        let err = read_stream_with_idle(resp, Duration::from_millis(200), |line| {
+            seen.push(line.to_string());
+            Ok(LineOutcome::Continue)
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            err,
+            AiError::Network("The connection stalled — no data for 120 seconds".to_string())
+        );
+        assert_eq!(seen, vec!["line"]);
+        assert!(started.elapsed() < Duration::from_millis(1400), "{:?}", started.elapsed());
+    }
+
+    #[tokio::test]
+    async fn read_stream_idle_timer_resets_on_each_chunk() {
+        // Three lines 150 ms apart: the whole stream takes about 300 ms, longer than the
+        // 200 ms idle limit, but no single silence is. A whole-stream deadline would fail.
+        let url = trickling_server(&["a", "b", "c"], Duration::from_millis(150));
+        let resp = send(client().get(url.clone()), &url).await.unwrap();
+        let mut seen = Vec::new();
+        let started = std::time::Instant::now();
+        read_stream_with_idle(resp, Duration::from_millis(200), |line| {
+            seen.push(line.to_string());
+            Ok(LineOutcome::Continue)
+        })
+        .await
+        .unwrap();
+        assert_eq!(seen, vec!["a", "b", "c"]);
+        assert!(started.elapsed() > Duration::from_millis(200), "{:?}", started.elapsed());
     }
 }

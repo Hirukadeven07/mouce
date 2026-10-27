@@ -55,8 +55,11 @@ impl Secrets {
         }
     }
 
+    /// Whether a key is stored. "Not found" is a quiet `false`; any other credential
+    /// store error is reported on stderr (its message only, never a key) and also
+    /// reads as `false`.
     pub fn has_key(&self, p: ProviderId) -> bool {
-        matches!(self.get_key(p), Ok(Some(_)))
+        key_present(self.get_key(p), |msg| eprintln!("could not check the {p:?} key: {msg}"))
     }
 
     pub fn clear_key(&self, p: ProviderId) -> Result<(), SecretError> {
@@ -67,8 +70,34 @@ impl Secrets {
     }
 }
 
+/// Turns a lookup result into "is a key stored", reporting real errors through `report`.
+fn key_present(found: Result<Option<String>, SecretError>, report: impl FnOnce(String)) -> bool {
+    match found {
+        Ok(key) => key.is_some(),
+        Err(e) => {
+            report(e.to_string());
+            false
+        }
+    }
+}
+
+/// Windows Credential Manager can answer "not found" for a credential that was just
+/// written while other threads read or write credentials. Every test that touches the
+/// real store holds this lock so such tests never overlap.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::sync::{Mutex, MutexGuard};
+
+    static CREDENTIAL_STORE: Mutex<()> = Mutex::new(());
+
+    pub(crate) fn lock_credential_store() -> MutexGuard<'static, ()> {
+        CREDENTIAL_STORE.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::test_support::lock_credential_store;
     use super::*;
     use crate::settings::ProviderId;
 
@@ -85,6 +114,7 @@ mod tests {
 
     #[test]
     fn set_key_trims_and_rejects_blank() {
+        let _lock = lock_credential_store();
         let g = guard("set_key_trims_and_rejects_blank");
         let s = &g.0;
         s.set_key(ProviderId::Groq, "  gsk_abc\n").unwrap();
@@ -96,6 +126,7 @@ mod tests {
 
     #[test]
     fn has_and_clear() {
+        let _lock = lock_credential_store();
         let g = guard("has_and_clear");
         let s = &g.0;
         assert!(!s.has_key(ProviderId::Groq));
@@ -104,5 +135,17 @@ mod tests {
         s.clear_key(ProviderId::Groq).unwrap();
         assert!(!s.has_key(ProviderId::Groq));
         s.clear_key(ProviderId::Groq).unwrap();
+    }
+
+    #[test]
+    fn key_present_is_quiet_for_missing_and_reports_real_errors() {
+        let quiet = |m: String| panic!("unexpected report: {m}");
+        assert!(key_present(Ok(Some("k".into())), quiet));
+        assert!(!key_present(Ok(None), quiet));
+
+        let mut reported = Vec::new();
+        let err = SecretError::Keyring("access denied".into());
+        assert!(!key_present(Err(err), |m| reported.push(m)));
+        assert_eq!(reported, vec!["credential store error: access denied"]);
     }
 }
