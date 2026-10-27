@@ -4,6 +4,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
+use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
+use rusqlite::limits::Limit;
 use rusqlite::{params, Connection, OptionalExtension};
 
 #[derive(Debug, thiserror::Error)]
@@ -41,18 +43,30 @@ fn guard_in(root: &Path, p: &Path) -> Result<PathBuf, StoreError> {
     let name = p.file_name().ok_or_else(outside)?;
     let parent = parent.canonicalize().map_err(|_| outside())?;
     let candidate = parent.join(name);
-    // If the target already exists, resolve it too so a link inside the
-    // app dir cannot point out of it.
-    let resolved = if candidate.exists() {
+    // If anything exists at the target (including a dangling symlink, which
+    // `exists()` would miss), resolve it too so a link inside the app dir
+    // cannot point out of it.
+    let resolved = if std::fs::symlink_metadata(&candidate).is_ok() {
         candidate.canonicalize().map_err(|_| outside())?
     } else {
         candidate
     };
-    if resolved.starts_with(root) {
+    // The root itself is a directory, never a valid file target.
+    if resolved != root && resolved.starts_with(root) {
         Ok(resolved)
     } else {
         Err(outside())
     }
+}
+
+/// Stops SQL run through `AppStore::connection()` from reaching files outside
+/// the app dir: no attached databases (limit) and ATTACH/DETACH denied (authorizer).
+fn harden(conn: &Connection) {
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0);
+    conn.authorizer(Some(|ctx: AuthContext<'_>| match ctx.action {
+        AuthAction::Attach { .. } | AuthAction::Detach { .. } => Authorization::Deny,
+        _ => Authorization::Allow,
+    }));
 }
 
 pub struct AppStore {
@@ -67,6 +81,7 @@ impl AppStore {
         let root = root.canonicalize()?;
         let db_path = guard_in(&root, &root.join("star.db"))?;
         let conn = Connection::open(db_path)?;
+        harden(&conn);
         conn.execute(
             "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
             [],
@@ -159,6 +174,85 @@ mod tests {
         drop(store);
         let again = AppStore::open(dir.path().to_path_buf()).unwrap();
         assert_eq!(again.get_kv("k").unwrap(), Some("v".to_string()));
+    }
+
+    #[test]
+    fn guard_rejects_root_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AppStore::open(dir.path().to_path_buf()).unwrap();
+        assert!(matches!(
+            store.guard_path(dir.path()),
+            Err(StoreError::OutsideAppDir(_))
+        ));
+        assert!(matches!(
+            store.guard_path(&dir.path().join(".")),
+            Err(StoreError::OutsideAppDir(_))
+        ));
+    }
+
+    #[test]
+    fn guard_rejects_dangling_symlink_escape() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let store = AppStore::open(dir.path().to_path_buf()).unwrap();
+        let link = dir.path().join("link.txt");
+        let target = outside.path().join("not-created.txt");
+        let made = std::os::windows::fs::symlink_file(&target, &link).is_ok();
+        if !made {
+            eprintln!("skipping: cannot create symlinks without privileges");
+            return;
+        }
+        assert!(!target.exists());
+        assert!(matches!(
+            store.guard_path(&link),
+            Err(StoreError::OutsideAppDir(_))
+        ));
+    }
+
+    #[test]
+    fn connection_cannot_attach_or_vacuum_outside_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let store = AppStore::open(dir.path().to_path_buf()).unwrap();
+        let x = outside.path().join("x.db");
+        let y = outside.path().join("y.db");
+        let conn = store.connection();
+        let attach = format!("ATTACH DATABASE '{}' AS x", x.display());
+        assert!(conn.execute_batch(&attach).is_err());
+        let vacuum = format!("VACUUM INTO '{}'", y.display());
+        assert!(conn.execute_batch(&vacuum).is_err());
+        drop(conn);
+        assert!(!x.exists(), "ATTACH created a file outside the app dir");
+        assert!(!y.exists(), "VACUUM INTO created a file outside the app dir");
+        store.set_kv("still", "works").unwrap();
+        assert_eq!(store.get_kv("still").unwrap(), Some("works".to_string()));
+    }
+
+    #[test]
+    fn attach_blocked_by_each_mechanism_alone() {
+        let outside = tempfile::tempdir().unwrap();
+        let x = outside.path().join("x.db");
+        let attach = format!("ATTACH DATABASE '{}' AS x", x.display());
+
+        let limit_only = Connection::open_in_memory().unwrap();
+        limit_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0);
+        assert!(limit_only.execute_batch(&attach).is_err());
+        let auth_only = Connection::open_in_memory().unwrap();
+        harden(&auth_only);
+        auth_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 10);
+        assert!(auth_only.execute_batch(&attach).is_err());
+        assert!(!x.exists());
+
+        let y = outside.path().join("y.db");
+        let vacuum = format!("VACUUM INTO '{}'", y.display());
+        let limit_only = Connection::open_in_memory().unwrap();
+        limit_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0);
+        assert!(limit_only.execute_batch(&vacuum).is_err());
+        let auth_only = Connection::open_in_memory().unwrap();
+        harden(&auth_only);
+        auth_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 10);
+        assert!(auth_only.execute_batch(&vacuum).is_err());
+        assert!(!y.exists());
     }
 
     #[test]
