@@ -126,22 +126,18 @@ fn no_forbidden_dependencies() {
         }
     }
 
-    // Task 1b makes this check unconditional (package.json is created there).
-    let package_json = root.join("../package.json");
-    if package_json.exists() {
-        let pkg = fs::read_to_string(&package_json).expect("read package.json");
-        for dep in [
-            "@tauri-apps/plugin-fs",
-            "plugin-shell",
-            "plugin-clipboard",
-            "plugin-dialog",
-            "plugin-opener",
-            "plugin-process",
-            "plugin-updater",
-        ] {
-            if pkg.contains(dep) {
-                failures.push(format!("package.json contains `{dep}`"));
-            }
+    let pkg = fs::read_to_string(root.join("../package.json")).expect("read ../package.json");
+    for dep in [
+        "@tauri-apps/plugin-fs",
+        "plugin-shell",
+        "plugin-clipboard",
+        "plugin-dialog",
+        "plugin-opener",
+        "plugin-process",
+        "plugin-updater",
+    ] {
+        if pkg.contains(dep) {
+            failures.push(format!("package.json contains `{dep}`"));
         }
     }
 
