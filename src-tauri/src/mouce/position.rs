@@ -1,4 +1,4 @@
-//! Pure placement math for the star window. All rects are physical pixels.
+//! Pure placement math for the mouce window. All rects are physical pixels.
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rect {
@@ -18,7 +18,7 @@ pub fn default_position(work_area: Rect, scale: f64, size_logical: u32) -> (i32,
     )
 }
 
-/// `Some(pos)` only if the whole star fits inside some work area.
+/// `Some(pos)` only if the whole mouce fits inside some work area.
 pub fn clamp_to_monitors(
     pos: (i32, i32),
     size_physical: u32,
@@ -50,7 +50,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn keep_inside_pulls_overflowing_star_back() {
+    fn keep_inside_pulls_overflowing_mouce_back() {
         let wa = Rect { x: 0, y: 0, w: 1920, h: 1040 };
         assert_eq!(keep_inside((1900, 1030), 72, wa), (1848, 968));
         assert_eq!(keep_inside((-5, 20), 72, wa), (0, 20));

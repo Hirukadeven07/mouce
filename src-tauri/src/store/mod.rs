@@ -75,11 +75,11 @@ pub struct AppStore {
 }
 
 impl AppStore {
-    /// Creates `root` if needed, then opens `root/star.db` with the `kv` table.
+    /// Creates `root` if needed, then opens `root/mouce.db` with the `kv` table.
     pub fn open(root: PathBuf) -> Result<AppStore, StoreError> {
         std::fs::create_dir_all(&root)?;
         let root = root.canonicalize()?;
-        let db_path = guard_in(&root, &root.join("star.db"))?;
+        let db_path = guard_in(&root, &root.join("mouce.db"))?;
         let conn = Connection::open(db_path)?;
         harden(&conn);
         conn.execute(
@@ -142,7 +142,7 @@ mod tests {
     fn guard_accepts_inside_root() {
         let dir = tempfile::tempdir().unwrap();
         let store = AppStore::open(dir.path().to_path_buf()).unwrap();
-        assert!(store.guard_path(&dir.path().join("star.db")).is_ok());
+        assert!(store.guard_path(&dir.path().join("mouce.db")).is_ok());
         assert!(store.guard_path(&dir.path().join("not-yet-created.txt")).is_ok());
     }
 

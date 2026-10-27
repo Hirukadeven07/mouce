@@ -35,10 +35,10 @@ mod tests {
 
     #[test]
     fn message_has_the_error_and_the_settings_folder() {
-        let dir = PathBuf::from(r"C:\Users\me\AppData\Roaming\com.desktopstar.app");
+        let dir = PathBuf::from(r"C:\Users\me\AppData\Roaming\com.mouce.app");
         let text = startup_error_message("disk is full", Some(&dir));
         assert_eq!(text, format!("disk is full\n\nYour settings folder: {}", dir.display()));
-        assert!(text.ends_with("com.desktopstar.app"));
+        assert!(text.ends_with("com.mouce.app"));
     }
 
     #[test]

@@ -180,7 +180,7 @@ export function FirstRun() {
         <>
           <h1>Hi, I'm mouce.</h1>
           <p>
-            I'm a tiny star that lives on your desktop and helps you understand what's on your
+            I live in the corner of your desktop and help you understand what's on your
             screen. I can never open, change, delete or run anything on your computer.
           </p>
           <div className="check">
@@ -205,7 +205,7 @@ export function FirstRun() {
       {step === 3 && (
         <>
           <h1>All set</h1>
-          <p>Click the star any time to open its settings.</p>
+          <p>Click mouce any time to open its settings.</p>
           {error && <p role="alert" className="error">{error}</p>}
           <div className="footer">
             <button type="button" className="primary" disabled={finishing} onClick={() => void done()}>

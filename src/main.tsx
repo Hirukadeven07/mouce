@@ -5,11 +5,11 @@ import { windowLabel } from "./lib/ipc";
 
 async function root(): Promise<React.ReactElement> {
   switch (windowLabel()) {
-    case "star": {
-      document.documentElement.classList.add("star-window-page");
-      await import("./star/star.css");
-      const { StarWindow } = await import("./star/Star");
-      return <StarWindow />;
+    case "mouce": {
+      document.documentElement.classList.add("mouce-window-page");
+      await import("./mouce/mouce.css");
+      const { MouceWindow } = await import("./mouce/Mouce");
+      return <MouceWindow />;
     }
     case "settings": {
       document.documentElement.classList.add("page-window");

@@ -109,7 +109,7 @@ mod tests {
     }
 
     fn guard(name: &str) -> Cleanup {
-        Cleanup(Secrets::new(&format!("com.desktopstar.app.test.{name}")))
+        Cleanup(Secrets::new(&format!("com.mouce.app.test.{name}")))
     }
 
     #[test]

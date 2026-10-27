@@ -1,46 +1,46 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Settings, StarState } from "../lib/types";
+import type { Settings, MouceState } from "../lib/types";
 
 vi.mock("../lib/ipc");
 
 import * as ipc from "../lib/ipc";
-import { Star, StarWindow } from "./Star";
+import { Mouce, MouceWindow } from "./Mouce";
 
 const baseSettings: Settings = {
   provider: "ollama",
   models: {},
   ollama_base_url: "http://localhost:11434",
-  star_size: "medium",
-  star_rotation: true,
-  star_position: null,
+  mouce_size: "medium",
+  mouce_rotation: true,
+  mouce_position: null,
   circle_hotkey: "Ctrl+Alt+Space",
   history_enabled: false,
   fallback_to_local: true,
   first_run_done: true,
 };
 
-describe("Star", () => {
+describe("Mouce", () => {
   it("renders state class", () => {
-    const { container } = render(<Star state="thinking" rotate sizePx={36} />);
-    expect(container.querySelector("img")).toHaveClass("star", "star--thinking");
+    const { container } = render(<Mouce state="thinking" rotate sizePx={36} />);
+    expect(container.querySelector("img")).toHaveClass("mouce", "mouce--thinking");
   });
 
   it("still when rotation off", () => {
-    const { container } = render(<Star state="idle" rotate={false} sizePx={36} />);
-    expect(container.querySelector("img")).toHaveClass("star--still");
+    const { container } = render(<Mouce state="idle" rotate={false} sizePx={36} />);
+    expect(container.querySelector("img")).toHaveClass("mouce--still");
   });
 
   it("size applied", () => {
-    const { container } = render(<Star state="idle" rotate sizePx={28} />);
+    const { container } = render(<Mouce state="idle" rotate sizePx={28} />);
     const img = container.querySelector("img");
     expect(img).toHaveAttribute("width", "28");
     expect(img).toHaveAttribute("height", "28");
   });
 });
 
-describe("StarWindow", () => {
-  let stateCb: ((s: StarState) => void) | undefined;
+describe("MouceWindow", () => {
+  let stateCb: ((s: MouceState) => void) | undefined;
   let settingsCb: ((s: Settings) => void) | undefined;
   const unlistenState = vi.fn();
   const unlistenSettings = vi.fn();
@@ -50,9 +50,9 @@ describe("StarWindow", () => {
     stateCb = undefined;
     settingsCb = undefined;
     vi.mocked(ipc.getSettings).mockResolvedValue(baseSettings);
-    vi.mocked(ipc.starClicked).mockResolvedValue(undefined);
+    vi.mocked(ipc.mouceClicked).mockResolvedValue(undefined);
     vi.mocked(ipc.startDragging).mockResolvedValue(undefined);
-    vi.mocked(ipc.onStarState).mockImplementation((cb) => {
+    vi.mocked(ipc.onMouceState).mockImplementation((cb) => {
       stateCb = cb;
       return Promise.resolve(unlistenState);
     });
@@ -63,7 +63,7 @@ describe("StarWindow", () => {
   });
 
   async function mount() {
-    const utils = render(<StarWindow />);
+    const utils = render(<MouceWindow />);
     // Wait for settings to load and listeners to attach.
     await waitFor(() => expect(stateCb).toBeDefined());
     await waitFor(() => expect(settingsCb).toBeDefined());
@@ -71,12 +71,12 @@ describe("StarWindow", () => {
     return utils;
   }
 
-  it("click without movement calls starClicked, not startDragging", async () => {
+  it("click without movement calls mouceClicked, not startDragging", async () => {
     const { container } = await mount();
     const root = container.firstElementChild as HTMLElement;
     fireEvent.pointerDown(root, { clientX: 20, clientY: 20, button: 0 });
     fireEvent.pointerUp(root, { clientX: 20, clientY: 20, button: 0 });
-    expect(ipc.starClicked).toHaveBeenCalledTimes(1);
+    expect(ipc.mouceClicked).toHaveBeenCalledTimes(1);
     expect(ipc.startDragging).not.toHaveBeenCalled();
   });
 
@@ -88,7 +88,7 @@ describe("StarWindow", () => {
     fireEvent.pointerMove(root, { clientX: 40, clientY: 25, buttons: 1 });
     fireEvent.pointerUp(root, { clientX: 40, clientY: 25, button: 0 });
     expect(ipc.startDragging).toHaveBeenCalledTimes(1);
-    expect(ipc.starClicked).not.toHaveBeenCalled();
+    expect(ipc.mouceClicked).not.toHaveBeenCalled();
   });
 
   it("a tiny wobble within 3px is still a click", async () => {
@@ -98,7 +98,7 @@ describe("StarWindow", () => {
     fireEvent.pointerMove(root, { clientX: 22, clientY: 21, buttons: 1 });
     fireEvent.pointerUp(root, { clientX: 22, clientY: 21, button: 0 });
     expect(ipc.startDragging).not.toHaveBeenCalled();
-    expect(ipc.starClicked).toHaveBeenCalledTimes(1);
+    expect(ipc.mouceClicked).toHaveBeenCalledTimes(1);
   });
 
   it("hover movement with no button held never starts dragging", async () => {
@@ -109,7 +109,7 @@ describe("StarWindow", () => {
     expect(ipc.startDragging).not.toHaveBeenCalled();
     // The press was cleared, so a later release is not a click either.
     fireEvent.pointerUp(root, { clientX: 30, clientY: 20, button: 0 });
-    expect(ipc.starClicked).not.toHaveBeenCalled();
+    expect(ipc.mouceClicked).not.toHaveBeenCalled();
   });
 
   it("pointercancel clears the press", async () => {
@@ -145,26 +145,26 @@ describe("StarWindow", () => {
   it("attaches a catch handler to each listen() promise immediately", async () => {
     const rejected = Promise.reject(new Error("no events"));
     const catchSpy = vi.spyOn(rejected, "catch");
-    vi.mocked(ipc.onStarState).mockImplementation(() => rejected);
-    const { unmount } = render(<StarWindow />);
+    vi.mocked(ipc.onMouceState).mockImplementation(() => rejected);
+    const { unmount } = render(<MouceWindow />);
     expect(catchSpy).toHaveBeenCalled();
     await waitFor(() => expect(ipc.getSettings).toHaveBeenCalled());
     unmount();
   });
 
-  it("star-state event updates the class", async () => {
+  it("mouce-state event updates the class", async () => {
     const { container } = await mount();
-    expect(container.querySelector("img")).toHaveClass("star--idle");
+    expect(container.querySelector("img")).toHaveClass("mouce--idle");
     act(() => stateCb!("thinking"));
-    expect(container.querySelector("img")).toHaveClass("star--thinking");
+    expect(container.querySelector("img")).toHaveClass("mouce--thinking");
   });
 
   it("settings-changed updates size and rotation", async () => {
     const { container } = await mount();
-    act(() => settingsCb!({ ...baseSettings, star_size: "large", star_rotation: false }));
+    act(() => settingsCb!({ ...baseSettings, mouce_size: "large", mouce_rotation: false }));
     const img = container.querySelector("img");
     expect(img).toHaveAttribute("width", "48");
-    expect(img).toHaveClass("star--still");
+    expect(img).toHaveClass("mouce--still");
   });
 
   it("removes listeners on unmount", async () => {

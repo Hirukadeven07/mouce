@@ -2,9 +2,9 @@
 
 export type ProviderId = "ollama" | "openai" | "groq" | "gemini" | "anthropic";
 
-export type StarSize = "small" | "medium" | "large";
+export type MouceSize = "small" | "medium" | "large";
 
-export function starSizePx(size: StarSize): number {
+export function mouceSizePx(size: MouceSize): number {
   switch (size) {
     case "small":
       return 28;
@@ -19,16 +19,16 @@ export interface Settings {
   provider: ProviderId;
   models: Partial<Record<ProviderId, string>>;
   ollama_base_url: string;
-  star_size: StarSize;
-  star_rotation: boolean;
-  star_position: [number, number] | null;
+  mouce_size: MouceSize;
+  mouce_rotation: boolean;
+  mouce_position: [number, number] | null;
   circle_hotkey: string;
   history_enabled: boolean;
   fallback_to_local: boolean;
   first_run_done: boolean;
 }
 
-export type StarState = "idle" | "thinking" | "looking" | "reminder";
+export type MouceState = "idle" | "thinking" | "looking" | "reminder";
 
 export type OllamaStatus =
   | { state: "notInstalled" }
