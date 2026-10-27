@@ -1,6 +1,8 @@
 //! AI provider types. All HTTP happens in Rust, restricted by `net::check_allowed`.
 
 pub mod net;
+pub mod ollama;
+pub mod openai_compat;
 
 use crate::settings::ProviderId;
 use async_trait::async_trait;
@@ -59,7 +61,7 @@ pub trait Provider: Send + Sync {
     async fn chat_stream(
         &self,
         req: &ChatRequest,
-        on_delta: &mut (dyn FnMut(&str) + Send),
+        on_delta: &mut (dyn for<'a> FnMut(&'a str) + Send),
     ) -> Result<String, AiError>;
 
     async fn list_models(&self) -> Result<Vec<String>, AiError>;
