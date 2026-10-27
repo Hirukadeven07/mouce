@@ -56,7 +56,11 @@ fn request_body(req: &ChatRequest) -> Value {
                 Role::User => "user",
                 Role::Assistant => "model",
             };
-            let mut parts = vec![json!({ "text": m.text })];
+            let mut parts = Vec::new();
+            // No empty text part for an image-only message.
+            if !(m.text.trim().is_empty() && !m.images.is_empty()) {
+                parts.push(json!({ "text": m.text }));
+            }
             for img in &m.images {
                 parts.push(json!({
                     "inline_data": { "mime_type": img.mime, "data": img.base64 }
@@ -75,10 +79,22 @@ fn request_body(req: &ChatRequest) -> Value {
     body
 }
 
-/// Parses one SSE line into its concatenated text parts, if any.
-fn parse_line(line: &str) -> Result<Option<String>, AiError> {
+/// Finish reasons that mean Gemini refused to produce an answer.
+const DECLINING_FINISH_REASONS: &[&str] =
+    &["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"];
+
+/// What one SSE line carried.
+#[derive(Default)]
+struct ParsedLine {
+    text: Option<String>,
+    /// Set when the prompt was blocked or a candidate ended with a declining reason.
+    declined: Option<String>,
+}
+
+/// Parses one SSE line into its concatenated text parts and any decline reason.
+fn parse_line(line: &str) -> Result<ParsedLine, AiError> {
     let Some(data) = net::sse_data(line) else {
-        return Ok(None);
+        return Ok(ParsedLine::default());
     };
     let v: Value = serde_json::from_str(data.trim())
         .map_err(|_| AiError::Parse("unreadable event in response stream".to_string()))?;
@@ -95,7 +111,18 @@ fn parse_line(line: &str) -> Result<Option<String>, AiError> {
         .flatten()
         .filter_map(|p| p.get("text").and_then(Value::as_str))
         .collect();
-    Ok(Some(text).filter(|t| !t.is_empty()))
+    let block = v.pointer("/promptFeedback/blockReason").and_then(Value::as_str);
+    let finish = v
+        .get("candidates")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|c| c.get("finishReason").and_then(Value::as_str))
+        .find(|r| DECLINING_FINISH_REASONS.contains(r));
+    Ok(ParsedLine {
+        text: Some(text).filter(|t| !t.is_empty()),
+        declined: block.or(finish).map(str::to_string),
+    })
 }
 
 #[async_trait]
@@ -114,15 +141,26 @@ impl Provider for GeminiProvider {
             .json(&request_body(req));
         let resp = net::send(builder, &url).await?;
         let mut full = String::new();
+        let mut declined: Option<String> = None;
         net::read_stream(resp, |line| {
-            if let Some(text) = parse_line(line)? {
+            let parsed = parse_line(line)?;
+            if let Some(text) = parsed.text {
                 full.push_str(&text);
                 on_delta(&text);
+            }
+            if declined.is_none() {
+                declined = parsed.declined;
             }
             Ok(net::LineOutcome::Continue)
         })
         .await?;
-        Ok(full)
+        match declined {
+            Some(reason) if full.is_empty() => Err(AiError::Http {
+                status: 400,
+                message: format!("Gemini declined to answer ({reason})"),
+            }),
+            _ => Ok(full),
+        }
     }
 
     async fn list_models(&self) -> Result<Vec<String>, AiError> {
@@ -239,6 +277,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/v1beta/models"))
+            .and(query_param("pageSize", "1000"))
             .and(header("x-goog-api-key", "g-test"))
             .respond_with(ResponseTemplate::new(200).set_body_string(
                 r#"{"models":[
@@ -251,6 +290,73 @@ mod tests {
             .await;
         let provider = GeminiProvider::new(server.uri(), "g-test".into());
         assert_eq!(provider.list_models().await.unwrap(), vec!["gemini-a", "gemini-c"]);
+    }
+
+    #[tokio::test]
+    async fn gemini_image_only_message_has_no_text_part() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST")).respond_with(ResponseTemplate::new(200)).mount(&server).await;
+        let provider = GeminiProvider::new(server.uri(), "g-test".into());
+        let img = || ImageInput { mime: "image/png".into(), base64: "QUJD".into() };
+        let req = ChatRequest {
+            model: "gemini-test".into(),
+            system: None,
+            messages: vec![
+                ChatMessage { role: Role::User, text: String::new(), images: vec![img()] },
+                ChatMessage { role: Role::User, text: "  ".into(), images: vec![img()] },
+                ChatMessage { role: Role::User, text: "hi".into(), images: vec![] },
+            ],
+            max_tokens: 10,
+        };
+        provider.chat_stream(&req, &mut |_: &str| {}).await.unwrap();
+        let received = server.received_requests().await.unwrap();
+        let body: Value = serde_json::from_slice(&received[0].body).unwrap();
+        let image = json!({ "inline_data": { "mime_type": "image/png", "data": "QUJD" } });
+        assert_eq!(body["contents"][0]["parts"], json!([image.clone()]), "{body}");
+        assert_eq!(body["contents"][1]["parts"], json!([image]), "{body}");
+        assert_eq!(body["contents"][2]["parts"], json!([{ "text": "hi" }]), "{body}");
+    }
+
+    async fn stream_result(sse: String) -> Result<String, AiError> {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(sse))
+            .mount(&server)
+            .await;
+        let provider = GeminiProvider::new(server.uri(), "g-test".into());
+        provider.chat_stream(&request(), &mut |_: &str| {}).await
+    }
+
+    fn declined(reason: &str) -> AiError {
+        AiError::Http { status: 400, message: format!("Gemini declined to answer ({reason})") }
+    }
+
+    #[tokio::test]
+    async fn gemini_prompt_block_with_no_text_is_an_error() {
+        let err =
+            stream_result("data: {\"promptFeedback\":{\"blockReason\":\"OTHER\"}}\n\n".into())
+                .await
+                .unwrap_err();
+        assert_eq!(err, declined("OTHER"));
+    }
+
+    #[tokio::test]
+    async fn gemini_declining_finish_reasons_with_no_text_are_errors() {
+        for reason in ["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"] {
+            let sse = format!("data: {{\"candidates\":[{{\"finishReason\":\"{reason}\"}}]}}\n\n");
+            assert_eq!(stream_result(sse).await.unwrap_err(), declined(reason), "{reason}");
+        }
+    }
+
+    #[tokio::test]
+    async fn gemini_empty_stop_stream_is_ok_and_streamed_text_is_kept() {
+        let stop = "data: {\"candidates\":[{\"finishReason\":\"STOP\"}]}\n\n".to_string();
+        assert_eq!(stream_result(stop).await, Ok(String::new()));
+        // Text was streamed before a late SAFETY finish: keep the text.
+        let late = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"par\"}]}}]}\n\n\
+                    data: {\"candidates\":[{\"finishReason\":\"SAFETY\"}]}\n\n"
+            .to_string();
+        assert_eq!(stream_result(late).await, Ok("par".to_string()));
     }
 
     #[tokio::test]

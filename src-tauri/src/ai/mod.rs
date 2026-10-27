@@ -80,26 +80,37 @@ pub fn provider_for(
     api_key: Option<String>,
 ) -> Result<Box<dyn Provider>, AiError> {
     let key = api_key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty());
-    let base = |default: &str| base_url.unwrap_or_else(|| default.to_string());
+    let base = resolve_base(id, base_url);
     Ok(match id {
-        ProviderId::Ollama => Box::new(ollama::OllamaProvider::new(base(OLLAMA_DEFAULT_BASE))),
-        ProviderId::OpenAi => Box::new(openai_compat::OpenAiCompat::new(
-            base(openai_compat::OPENAI_BASE),
-            key.ok_or(AiError::MissingKey)?,
-        )),
-        ProviderId::Groq => Box::new(openai_compat::OpenAiCompat::new(
-            base(openai_compat::GROQ_BASE),
-            key.ok_or(AiError::MissingKey)?,
-        )),
-        ProviderId::Gemini => Box::new(gemini::GeminiProvider::new(
-            base(gemini::GEMINI_BASE),
-            key.ok_or(AiError::MissingKey)?,
-        )),
-        ProviderId::Anthropic => Box::new(anthropic::AnthropicProvider::new(
-            base(anthropic::ANTHROPIC_BASE),
-            key.ok_or(AiError::MissingKey)?,
-        )),
+        ProviderId::Ollama => Box::new(ollama::OllamaProvider::new(base)),
+        ProviderId::OpenAi => {
+            Box::new(openai_compat::OpenAiCompat::new(base, key.ok_or(AiError::MissingKey)?))
+        }
+        ProviderId::Groq => {
+            Box::new(openai_compat::OpenAiCompat::new(base, key.ok_or(AiError::MissingKey)?))
+        }
+        ProviderId::Gemini => {
+            Box::new(gemini::GeminiProvider::new(base, key.ok_or(AiError::MissingKey)?))
+        }
+        ProviderId::Anthropic => {
+            Box::new(anthropic::AnthropicProvider::new(base, key.ok_or(AiError::MissingKey)?))
+        }
     })
+}
+
+/// The override when it has content; otherwise the provider's own default.
+fn resolve_base(id: ProviderId, base_url: Option<String>) -> String {
+    let default = match id {
+        ProviderId::Ollama => OLLAMA_DEFAULT_BASE,
+        ProviderId::OpenAi => openai_compat::OPENAI_BASE,
+        ProviderId::Groq => openai_compat::GROQ_BASE,
+        ProviderId::Gemini => gemini::GEMINI_BASE,
+        ProviderId::Anthropic => anthropic::ANTHROPIC_BASE,
+    };
+    match base_url.map(|b| b.trim().to_string()) {
+        Some(b) if !b.is_empty() => b,
+        _ => default.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -129,6 +140,29 @@ mod tests {
             provider_for(ProviderId::Ollama, Some("http://localhost:11434".into()), None).is_ok()
         );
         assert!(provider_for(ProviderId::Ollama, None, None).is_ok());
+    }
+
+    #[test]
+    fn blank_base_url_override_means_default() {
+        for blank in ["", "   ", "\t\n"] {
+            assert_eq!(
+                resolve_base(ProviderId::Anthropic, Some(blank.into())),
+                anthropic::ANTHROPIC_BASE,
+                "{blank:?}"
+            );
+            assert_eq!(
+                resolve_base(ProviderId::Ollama, Some(blank.into())),
+                "http://localhost:11434",
+                "{blank:?}"
+            );
+            // Blank overrides still build a working provider.
+            assert!(provider_for(ProviderId::Gemini, Some(blank.into()), Some("k".into())).is_ok());
+        }
+        assert_eq!(resolve_base(ProviderId::Groq, None), openai_compat::GROQ_BASE);
+        assert_eq!(
+            resolve_base(ProviderId::OpenAi, Some(" http://127.0.0.1:9 ".into())),
+            "http://127.0.0.1:9"
+        );
     }
 
     #[tokio::test]

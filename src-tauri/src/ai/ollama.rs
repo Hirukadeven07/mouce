@@ -38,7 +38,12 @@ fn request_body(req: &ChatRequest) -> Value {
         }
         messages.push(msg);
     }
-    json!({ "model": req.model, "stream": true, "messages": messages })
+    json!({
+        "model": req.model,
+        "stream": true,
+        "messages": messages,
+        "options": { "num_predict": req.max_tokens },
+    })
 }
 
 /// Parses one NDJSON line into (text delta, stream finished).
@@ -120,6 +125,7 @@ mod tests {
             .and(body_partial_json(json!({
                 "model": "gemma3:4b",
                 "stream": true,
+                "options": { "num_predict": 100 },
                 "messages": [
                     { "role": "system", "content": "be brief" },
                     { "role": "user", "content": "what is this?", "images": ["QUJD"] }
