@@ -7,47 +7,21 @@ import {
   starClicked,
 } from "../lib/ipc";
 import { starSizePx, type Settings, type StarState } from "../lib/types";
+import logoUrl from "../assets/mouce.png";
 
-// The Mouce logo: a grey mouse head with a silver rim, drawn in a 100x100
-// viewBox. Keep in step with src-tauri/icons/mouce.png (the app icon source).
+// The Mouce logo, cut out of images/mouce logo.jpg with a transparent
+// background (src-tauri/icons/mouce.png is the same cutout at 512px).
 export function Star(props: { state: StarState; rotate: boolean; sizePx: number }) {
   const { state, rotate, sizePx } = props;
   return (
-    <svg
+    <img
       className={"star star--" + state + (rotate ? "" : " star--still")}
+      src={logoUrl}
       width={sizePx}
       height={sizePx}
-      viewBox="0 0 100 100"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <defs>
-        <linearGradient id="mouce-rim" gradientUnits="userSpaceOnUse" x1="10" y1="8" x2="90" y2="95">
-          <stop offset="0%" stopColor="#FCFCFD" />
-          <stop offset="100%" stopColor="#6E7278" />
-        </linearGradient>
-        <linearGradient id="mouce-face" gradientUnits="userSpaceOnUse" x1="30" y1="10" x2="60" y2="92">
-          <stop offset="0%" stopColor="#D9DBDE" />
-          <stop offset="100%" stopColor="#A8ABB0" />
-        </linearGradient>
-      </defs>
-      <g fill="url(#mouce-rim)" stroke="url(#mouce-rim)" strokeWidth="4">
-        <circle cx="24" cy="28" r="18" />
-        <circle cx="76" cy="28" r="18" />
-        <ellipse cx="50" cy="60" rx="36" ry="33" />
-      </g>
-      <g fill="url(#mouce-face)">
-        <circle cx="24" cy="28" r="15" />
-        <circle cx="76" cy="28" r="15" />
-        <ellipse cx="50" cy="60" rx="33" ry="30" />
-      </g>
-      <g fill="#1F3566" stroke="#E6E8EB" strokeWidth="1.2">
-        <circle cx="37" cy="58" r="5.5" />
-        <circle cx="63" cy="58" r="5.5" />
-      </g>
-      <path d="M45.5 66 H54.5 L50 71.5 Z" fill="#141414" stroke="#141414" strokeWidth="2" strokeLinejoin="round" />
-      <path d="M42 76 Q50 82.5 58 76" fill="none" stroke="#141414" strokeWidth="3" strokeLinecap="round" />
-    </svg>
+      alt=""
+      draggable={false}
+    />
   );
 }
 
