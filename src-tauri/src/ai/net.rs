@@ -1,6 +1,7 @@
 //! Allowlisted HTTP client and stream-line parsing for AI providers.
 
 use super::AiError;
+use futures_util::StreamExt;
 use std::time::Duration;
 use url::{Host, Url};
 
@@ -175,6 +176,43 @@ impl LineBuffer {
             None
         } else {
             Some(String::from_utf8_lossy(&self.buf).into_owned())
+        }
+    }
+}
+
+/// What the stream reader should do after a line has been handled.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LineOutcome {
+    Continue,
+    Stop,
+}
+
+/// Reads a streaming response line by line, calling `on_line` for each complete
+/// line. Reading stops at the first `Stop` (later lines are never delivered) or
+/// the first error. A trailing unterminated line is delivered when the stream
+/// ends; a stream that ends without `Stop` is still `Ok`.
+pub async fn read_stream(
+    resp: reqwest::Response,
+    mut on_line: impl FnMut(&str) -> Result<LineOutcome, AiError>,
+) -> Result<(), AiError> {
+    let mut stream = resp.bytes_stream();
+    let mut lines = LineBuffer::new();
+    loop {
+        match stream.next().await {
+            Some(chunk) => {
+                let chunk = chunk.map_err(|e| AiError::Network(e.without_url().to_string()))?;
+                for line in lines.push(&chunk) {
+                    if on_line(&line)? == LineOutcome::Stop {
+                        return Ok(());
+                    }
+                }
+            }
+            None => {
+                if let Some(line) = lines.finish() {
+                    on_line(&line)?;
+                }
+                return Ok(());
+            }
         }
     }
 }
@@ -381,5 +419,69 @@ mod tests {
         assert_eq!(msgs[0], "boom");
         assert_eq!(msgs[1], "bad");
         assert_eq!(msgs[2].chars().count(), 300);
+    }
+
+    async fn body_response(body: &'static str) -> (MockServer, reqwest::Response) {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+        let url = u(&server.uri());
+        let resp = send(client().get(url.clone()), &url).await.unwrap();
+        (server, resp)
+    }
+
+    #[tokio::test]
+    async fn read_stream_stops_at_stop_and_ignores_later_lines() {
+        let (_server, resp) = body_response("one
+two
+STOP
+ignored
+also ignored
+").await;
+        let mut seen = Vec::new();
+        read_stream(resp, |line| {
+            seen.push(line.to_string());
+            Ok(if line == "STOP" { LineOutcome::Stop } else { LineOutcome::Continue })
+        })
+        .await
+        .unwrap();
+        assert_eq!(seen, vec!["one", "two", "STOP"]);
+    }
+
+    #[tokio::test]
+    async fn read_stream_propagates_line_error_and_stops() {
+        let (_server, resp) = body_response("ok
+bad
+never
+").await;
+        let mut seen = Vec::new();
+        let err = read_stream(resp, |line| {
+            seen.push(line.to_string());
+            if line == "bad" {
+                Err(AiError::Parse("malformed".to_string()))
+            } else {
+                Ok(LineOutcome::Continue)
+            }
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(err, AiError::Parse("malformed".to_string()));
+        assert_eq!(seen, vec!["ok", "bad"]);
+    }
+
+    #[tokio::test]
+    async fn read_stream_delivers_final_unterminated_line() {
+        let (_server, resp) = body_response("first
+last").await;
+        let mut seen = Vec::new();
+        read_stream(resp, |line| {
+            seen.push(line.to_string());
+            Ok(LineOutcome::Continue)
+        })
+        .await
+        .unwrap();
+        assert_eq!(seen, vec!["first", "last"]);
     }
 }

@@ -2,7 +2,6 @@
 
 use super::{net, AiError, ChatRequest, Provider, Role};
 use async_trait::async_trait;
-use futures_util::StreamExt;
 use serde_json::{json, Value};
 use url::Url;
 
@@ -62,32 +61,16 @@ impl Provider for OllamaProvider {
     ) -> Result<String, AiError> {
         let url = self.url("/api/chat")?;
         let resp = net::send(self.client.post(url.clone()).json(&request_body(req)), &url).await?;
-        let mut stream = resp.bytes_stream();
-        let mut lines = net::LineBuffer::new();
         let mut full = String::new();
-        let mut ended = false;
-        while !ended {
-            let batch: Vec<String> = match stream.next().await {
-                Some(chunk) => {
-                    let chunk = chunk.map_err(|e| AiError::Network(e.without_url().to_string()))?;
-                    lines.push(&chunk)
-                }
-                None => {
-                    ended = true;
-                    std::mem::take(&mut lines).finish().into_iter().collect()
-                }
-            };
-            for line in batch {
-                let (text, finished) = parse_line(&line)?;
-                if let Some(text) = text {
-                    full.push_str(&text);
-                    on_delta(&text);
-                }
-                if finished {
-                    return Ok(full);
-                }
+        net::read_stream(resp, |line| {
+            let (text, finished) = parse_line(line)?;
+            if let Some(text) = text {
+                full.push_str(&text);
+                on_delta(&text);
             }
-        }
+            Ok(if finished { net::LineOutcome::Stop } else { net::LineOutcome::Continue })
+        })
+        .await?;
         Ok(full)
     }
 
