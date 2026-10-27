@@ -23,19 +23,19 @@ const baseSettings: Settings = {
 describe("Star", () => {
   it("renders state class", () => {
     const { container } = render(<Star state="thinking" rotate sizePx={36} />);
-    expect(container.querySelector("svg")).toHaveClass("star", "star--thinking");
+    expect(container.querySelector("img")).toHaveClass("star", "star--thinking");
   });
 
   it("still when rotation off", () => {
     const { container } = render(<Star state="idle" rotate={false} sizePx={36} />);
-    expect(container.querySelector("svg")).toHaveClass("star--still");
+    expect(container.querySelector("img")).toHaveClass("star--still");
   });
 
   it("size applied", () => {
     const { container } = render(<Star state="idle" rotate sizePx={28} />);
-    const svg = container.querySelector("svg");
-    expect(svg).toHaveAttribute("width", "28");
-    expect(svg).toHaveAttribute("height", "28");
+    const img = container.querySelector("img");
+    expect(img).toHaveAttribute("width", "28");
+    expect(img).toHaveAttribute("height", "28");
   });
 });
 
@@ -67,7 +67,7 @@ describe("StarWindow", () => {
     // Wait for settings to load and listeners to attach.
     await waitFor(() => expect(stateCb).toBeDefined());
     await waitFor(() => expect(settingsCb).toBeDefined());
-    await waitFor(() => expect(utils.container.querySelector("svg")).toHaveAttribute("width", "36"));
+    await waitFor(() => expect(utils.container.querySelector("img")).toHaveAttribute("width", "36"));
     return utils;
   }
 
@@ -154,17 +154,17 @@ describe("StarWindow", () => {
 
   it("star-state event updates the class", async () => {
     const { container } = await mount();
-    expect(container.querySelector("svg")).toHaveClass("star--idle");
+    expect(container.querySelector("img")).toHaveClass("star--idle");
     act(() => stateCb!("thinking"));
-    expect(container.querySelector("svg")).toHaveClass("star--thinking");
+    expect(container.querySelector("img")).toHaveClass("star--thinking");
   });
 
   it("settings-changed updates size and rotation", async () => {
     const { container } = await mount();
     act(() => settingsCb!({ ...baseSettings, star_size: "large", star_rotation: false }));
-    const svg = container.querySelector("svg");
-    expect(svg).toHaveAttribute("width", "48");
-    expect(svg).toHaveClass("star--still");
+    const img = container.querySelector("img");
+    expect(img).toHaveAttribute("width", "48");
+    expect(img).toHaveClass("star--still");
   });
 
   it("removes listeners on unmount", async () => {
