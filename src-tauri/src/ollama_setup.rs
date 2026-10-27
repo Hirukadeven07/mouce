@@ -6,9 +6,13 @@ use crate::ai::{net, AiError};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::Path;
+use std::time::Duration;
 use url::Url;
 
 pub const DEFAULT_LOCAL_MODEL: &str = "gemma3:4b";
+
+/// How long the status check waits for the server's answer.
+const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Serialize, Debug, PartialEq, Eq)]
 #[serde(tag = "state", rename_all = "camelCase")]
@@ -40,10 +44,16 @@ fn endpoint(base_url: &str, path: &str) -> Result<Url, AiError> {
 ///
 /// Only checks `exe_hint` for existence; nothing is ever launched.
 pub async fn status(base_url: &str, exe_hint: &Path) -> OllamaStatus {
-    match fetch_models(base_url).await {
-        Ok(models) => OllamaStatus::Running { models },
-        Err(AiError::Network(_)) if !exe_hint.exists() => OllamaStatus::NotInstalled,
-        Err(_) => OllamaStatus::NotRunning,
+    status_with_timeout(base_url, exe_hint, STATUS_TIMEOUT).await
+}
+
+async fn status_with_timeout(base_url: &str, exe_hint: &Path, limit: Duration) -> OllamaStatus {
+    // A listener that accepts the connection but never answers must not hang the UI.
+    match tokio::time::timeout(limit, fetch_models(base_url)).await {
+        Err(_elapsed) => OllamaStatus::NotRunning,
+        Ok(Ok(models)) => OllamaStatus::Running { models },
+        Ok(Err(AiError::Network(_))) if !exe_hint.exists() => OllamaStatus::NotInstalled,
+        Ok(Err(_)) => OllamaStatus::NotRunning,
     }
 }
 
@@ -230,6 +240,33 @@ mod tests {
                 OllamaStatus::NotRunning
             );
         }
+    }
+
+    #[tokio::test]
+    async fn status_not_running_when_server_never_answers() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/tags"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"models":[]}"#)
+                    .set_delay(std::time::Duration::from_secs(2)),
+            )
+            .mount(&server)
+            .await;
+        // Not-installed would be wrong too: something is listening.
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("ollama.exe");
+        let started = std::time::Instant::now();
+        let s = status_with_timeout(&server.uri(), &missing, std::time::Duration::from_millis(150))
+            .await;
+        assert_eq!(s, OllamaStatus::NotRunning);
+        assert!(started.elapsed() < std::time::Duration::from_millis(1500));
+    }
+
+    #[test]
+    fn status_timeout_is_five_seconds() {
+        assert_eq!(STATUS_TIMEOUT, std::time::Duration::from_secs(5));
     }
 
     #[tokio::test]
