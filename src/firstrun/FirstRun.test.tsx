@@ -176,8 +176,8 @@ describe("FirstRun", () => {
     });
     render(<FirstRun />);
 
-    expect(await screen.findByText("Hi, I'm Star.")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Start Star when Windows starts" })).toBeChecked();
+    expect(await screen.findByText("Hi, I'm Mouce.")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Start Mouce when Windows starts" })).toBeChecked();
     await toStepTwo(user);
     await screen.findByText(/ready/i);
     await user.click(screen.getByRole("button", { name: "Next" }));
@@ -193,7 +193,7 @@ describe("FirstRun", () => {
     const user = userEvent.setup();
     setStatus({ state: "running", models: ["gemma3:4b"] });
     render(<FirstRun />);
-    await user.click(await screen.findByRole("checkbox", { name: "Start Star when Windows starts" }));
+    await user.click(await screen.findByRole("checkbox", { name: "Start Mouce when Windows starts" }));
     await toStepTwo(user);
     await screen.findByText(/ready/i);
     await user.click(screen.getByRole("button", { name: "Next" }));

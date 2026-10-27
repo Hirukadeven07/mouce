@@ -24,7 +24,7 @@ async function root(): Promise<React.ReactElement> {
       return <FirstRun />;
     }
     default:
-      return <div>Star</div>;
+      return <div>Mouce</div>;
   }
 }
 
@@ -39,6 +39,6 @@ blockContextMenu(document);
 root()
   .then(render)
   .catch((err) => {
-    console.error("Star failed to start this window", err);
-    render(<div>Star couldn't start this window.</div>);
+    console.error("Mouce failed to start this window", err);
+    render(<div>Mouce couldn't start this window.</div>);
   });

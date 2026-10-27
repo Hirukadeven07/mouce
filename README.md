@@ -1,13 +1,13 @@
-# Star
+# Mouce
 
-Star is a tiny, always-on-top rotating star that lives on your Windows desktop and helps you
+Mouce is a tiny, always-on-top rotating star that lives on your Windows desktop and helps you
 understand what is on your screen. It never takes keyboard focus from the app you are using,
 and it asks the AI you choose (a free local model through Ollama, or an online provider with
 your own API key) about what you point it at.
 
 ## The safety promise
 
-Star can look but never touch. It can never open, change, delete or run anything on your
+Mouce can look but never touch. It can never open, change, delete or run anything on your
 computer. Concretely:
 
 - The app has no file-write, process-launch, clipboard-write or input-synthesis code. An

@@ -28,7 +28,7 @@ async function renderSettings() {
   await screen.findByLabelText("Provider");
   // Let the startup checks (key status, model list, autostart) settle.
   await waitFor(() => expect(ipc.getAutostart).toHaveBeenCalled());
-  await screen.findByRole("checkbox", { name: "Start Star when Windows starts" });
+  await screen.findByRole("checkbox", { name: "Start Mouce when Windows starts" });
 }
 
 describe("Settings", () => {
@@ -199,7 +199,7 @@ describe("Settings", () => {
     await renderSettings();
     expect(
       screen.getByText(
-        "Screen captures are only sent to the AI you pick above. Star cannot open, change, or delete your files.",
+        "Screen captures are only sent to the AI you pick above. Mouce cannot open, change, or delete your files.",
       ),
     ).toBeInTheDocument();
   });
@@ -209,7 +209,7 @@ describe("Settings", () => {
     let finish: () => void = () => {};
     vi.mocked(ipc.setAutostart).mockImplementation(() => new Promise<void>((r) => (finish = r)));
     await renderSettings();
-    const box = screen.getByRole("checkbox", { name: "Start Star when Windows starts" });
+    const box = screen.getByRole("checkbox", { name: "Start Mouce when Windows starts" });
     await user.click(box);
     expect(box).toBeDisabled();
     expect(box).toBeChecked();
@@ -225,7 +225,7 @@ describe("Settings", () => {
     vi.mocked(ipc.getAutostart).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     vi.mocked(ipc.setAutostart).mockRejectedValue("Access is denied");
     await renderSettings();
-    const box = screen.getByRole("checkbox", { name: "Start Star when Windows starts" });
+    const box = screen.getByRole("checkbox", { name: "Start Mouce when Windows starts" });
     await user.click(box);
     expect(await screen.findByText("Access is denied")).toBeInTheDocument();
     await waitFor(() => expect(box).toBeEnabled());
