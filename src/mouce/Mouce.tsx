@@ -2,20 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import {
   getSettings,
   onSettingsChanged,
-  onStarState,
+  onMouceState,
   startDragging,
-  starClicked,
+  mouceClicked,
 } from "../lib/ipc";
-import { starSizePx, type Settings, type StarState } from "../lib/types";
+import { mouceSizePx, type Settings, type MouceState } from "../lib/types";
 import logoUrl from "../assets/mouce.png";
 
 // The mouce logo, cut out of images/mouce logo.jpg with a transparent
 // background (src-tauri/icons/mouce.png is the same cutout at 512px).
-export function Star(props: { state: StarState; rotate: boolean; sizePx: number }) {
+export function Mouce(props: { state: MouceState; rotate: boolean; sizePx: number }) {
   const { state, rotate, sizePx } = props;
   return (
     <img
-      className={"star star--" + state + (rotate ? "" : " star--still")}
+      className={"mouce mouce--" + state + (rotate ? "" : " mouce--still")}
       src={logoUrl}
       width={sizePx}
       height={sizePx}
@@ -27,9 +27,9 @@ export function Star(props: { state: StarState; rotate: boolean; sizePx: number 
 
 const DRAG_THRESHOLD_PX = 3;
 
-export function StarWindow() {
+export function MouceWindow() {
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [state, setState] = useState<StarState>("idle");
+  const [state, setState] = useState<MouceState>("idle");
   const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export function StarWindow() {
     // registration is never an unhandled rejection; cleanup still unlistens
     // whatever did register.
     const unlisteners: Array<Promise<(() => void) | null>> = [
-      onStarState((s) => alive && setState(s)),
+      onMouceState((s) => alive && setState(s)),
       onSettingsChanged((s) => alive && setSettings(s)),
     ].map((p) => p.catch(() => null));
     getSettings()
@@ -50,12 +50,12 @@ export function StarWindow() {
     };
   }, []);
 
-  const sizePx = starSizePx(settings?.star_size ?? "medium");
-  const rotate = settings?.star_rotation ?? true;
+  const sizePx = mouceSizePx(settings?.mouce_size ?? "medium");
+  const rotate = settings?.mouce_rotation ?? true;
 
   return (
     <div
-      className="star-window"
+      className="mouce-window"
       role="button"
       aria-label="mouce — click to open settings"
       onContextMenu={(e) => e.preventDefault()}
@@ -84,7 +84,7 @@ export function StarWindow() {
       onPointerUp={() => {
         const p = press.current;
         press.current = null;
-        if (p && !p.dragging) starClicked().catch(() => {});
+        if (p && !p.dragging) mouceClicked().catch(() => {});
       }}
       onPointerCancel={() => {
         press.current = null;
@@ -93,7 +93,7 @@ export function StarWindow() {
         press.current = null;
       }}
     >
-      <Star state={state} rotate={rotate} sizePx={sizePx} />
+      <Mouce state={state} rotate={rotate} sizePx={sizePx} />
     </div>
   );
 }

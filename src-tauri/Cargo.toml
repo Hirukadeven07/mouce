@@ -1,11 +1,11 @@
 [package]
-name = "desktop-star"
+name = "mouce"
 version = "0.1.0"
 description = "mouce"
 edition = "2021"
 
 [lib]
-name = "desktop_star_lib"
+name = "mouce_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

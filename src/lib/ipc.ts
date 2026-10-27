@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { OllamaStatus, ProviderId, PullProgress, Settings, StarState } from "./types";
+import type { OllamaStatus, ProviderId, PullProgress, Settings, MouceState } from "./types";
 
 export type { UnlistenFn };
 
@@ -15,16 +15,16 @@ export function getSettings(): Promise<Settings> {
   return invoke<Settings>("get_settings");
 }
 
-export function starClicked(): Promise<void> {
-  return invoke<void>("star_clicked");
+export function mouceClicked(): Promise<void> {
+  return invoke<void>("mouce_clicked");
 }
 
 export function startDragging(): Promise<void> {
   return getCurrentWindow().startDragging();
 }
 
-export function onStarState(cb: (state: StarState) => void): Promise<UnlistenFn> {
-  return listen<StarState>("star-state", (e) => cb(e.payload));
+export function onMouceState(cb: (state: MouceState) => void): Promise<UnlistenFn> {
+  return listen<MouceState>("mouce-state", (e) => cb(e.payload));
 }
 
 export function onSettingsChanged(cb: (settings: Settings) => void): Promise<UnlistenFn> {

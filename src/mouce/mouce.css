@@ -1,11 +1,11 @@
-html.star-window-page,
-html.star-window-page body {
+html.mouce-window-page,
+html.mouce-window-page body {
   margin: 0;
   background: transparent;
   overflow: hidden;
 }
 
-.star-window {
+.mouce-window {
   width: 100vw;
   height: 100vh;
   display: flex;
@@ -16,34 +16,34 @@ html.star-window-page body {
   cursor: pointer;
 }
 
-.star {
+.mouce {
   display: block;
-  animation: star-sway 6s ease-in-out infinite;
+  animation: mouce-sway 6s ease-in-out infinite;
   transform-origin: 50% 60%;
   will-change: transform;
   pointer-events: none;
 }
 
-.star--thinking {
+.mouce--thinking {
   animation-duration: 1.2s;
 }
 
-.star--looking {
+.mouce--looking {
   opacity: 0.55;
-  animation: star-sway 6s ease-in-out infinite, star-pulse 2.4s ease-in-out infinite;
+  animation: mouce-sway 6s ease-in-out infinite, mouce-pulse 2.4s ease-in-out infinite;
 }
 
-.star--reminder {
+.mouce--reminder {
   /* The window leaves ~6px per side; keep the glow within 5px. */
   filter: drop-shadow(0 0 3px rgba(120, 160, 230, 0.9)) drop-shadow(0 0 1.5px rgba(120, 160, 230, 0.7));
 }
 
-.star--still {
+.mouce--still {
   animation: none;
 }
 
 /* A gentle head tilt; a full spin looks wrong on a face. */
-@keyframes star-sway {
+@keyframes mouce-sway {
   0%,
   100% {
     transform: rotate(-8deg);
@@ -53,7 +53,7 @@ html.star-window-page body {
   }
 }
 
-@keyframes star-pulse {
+@keyframes mouce-pulse {
   0%,
   100% {
     opacity: 0.55;
@@ -64,9 +64,9 @@ html.star-window-page body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .star,
-  .star--thinking,
-  .star--looking {
+  .mouce,
+  .mouce--thinking,
+  .mouce--looking {
     animation: none;
   }
 }

@@ -3,7 +3,7 @@ pub mod commands;
 pub mod ollama_setup;
 pub mod secrets;
 pub mod settings;
-pub mod star;
+pub mod mouce;
 pub mod startup;
 pub mod store;
 pub mod tray;
@@ -22,7 +22,7 @@ pub struct AppState {
     /// Set while a model download is running; only one runs at a time.
     pub pull_active: AtomicBool,
     /// Windows (Settings, first run) that are being built right now.
-    pub opening: star::OpeningWindows,
+    pub opening: mouce::OpeningWindows,
 }
 
 impl AppState {
@@ -32,7 +32,7 @@ impl AppState {
             settings: Mutex::new(settings),
             secrets,
             pull_active: AtomicBool::new(false),
-            opening: star::OpeningWindows::default(),
+            opening: mouce::OpeningWindows::default(),
         }
     }
 }
@@ -62,8 +62,8 @@ fn on_second_launch(app: &tauri::AppHandle) {
         .map(|s| s.settings.lock().unwrap_or_else(|e| e.into_inner()).first_run_done)
         .unwrap_or(true);
     match second_launch_target(first_run_done) {
-        SecondLaunch::FirstRun => star::open_firstrun(app),
-        SecondLaunch::Settings => star::open_settings(app),
+        SecondLaunch::FirstRun => mouce::open_firstrun(app),
+        SecondLaunch::Settings => mouce::open_settings(app),
     }
 }
 
@@ -74,18 +74,18 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         format!("mouce could not open its data folder at {}: {e}", data_dir.display())
     })?;
     let settings = settings::load(&store);
-    app.manage(AppState::new(store, settings.clone(), Secrets::new("com.desktopstar.app")));
-    star::create(app.handle(), &settings)?;
+    app.manage(AppState::new(store, settings.clone(), Secrets::new("com.mouce.app")));
+    mouce::create(app.handle(), &settings)?;
     tray::build(app.handle())?;
     if !settings.first_run_done {
-        star::open_firstrun(app.handle());
+        mouce::open_firstrun(app.handle());
     }
     Ok(())
 }
 
 /// Where Windows keeps this app's data, for the error box when no app handle exists yet.
 fn fallback_data_dir() -> Option<std::path::PathBuf> {
-    std::env::var_os("APPDATA").map(|d| std::path::PathBuf::from(d).join("com.desktopstar.app"))
+    std::env::var_os("APPDATA").map(|d| std::path::PathBuf::from(d).join("com.mouce.app"))
 }
 
 /// Runs the app. An `Err` means it could not start; the user has already been told in a
@@ -101,7 +101,7 @@ pub fn run() -> Result<(), String> {
         ))
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            commands::star_clicked,
+            commands::mouce_clicked,
             commands::get_settings,
             commands::update_settings,
             commands::set_api_key,

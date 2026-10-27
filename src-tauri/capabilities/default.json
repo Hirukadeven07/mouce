@@ -1,5 +1,5 @@
 {
   "identifier": "default",
-  "windows": ["star", "settings", "firstrun"],
+  "windows": ["mouce", "settings", "firstrun"],
   "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

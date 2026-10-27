@@ -7,7 +7,7 @@
 use crate::ai::{self, ChatMessage, ChatRequest, Role};
 use crate::ollama_setup::{self, OllamaStatus, PullProgress};
 use crate::settings::{self, ProviderId, Settings};
-use crate::{star, AppState};
+use crate::{mouce, AppState};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::MutexGuard;
@@ -58,10 +58,10 @@ fn log_best_effort<E: std::fmt::Display>(
     }
 }
 
-/// The star was clicked (not dragged). In M1 this opens Settings.
+/// The mouce was clicked (not dragged). In M1 this opens Settings.
 #[tauri::command]
-pub fn star_clicked(app: AppHandle) {
-    star::open_settings(&app);
+pub fn mouce_clicked(app: AppHandle) {
+    mouce::open_settings(&app);
 }
 
 // ---- settings ----
@@ -71,19 +71,19 @@ pub fn get_settings_impl(state: &AppState) -> Settings {
 }
 
 /// Saves `incoming` while holding the settings lock, so a concurrent writer (such as the
-/// star-position save) can never be overwritten by a stale snapshot. The position and the
+/// mouce-position save) can never be overwritten by a stale snapshot. The position and the
 /// first-run flag belong to the backend; whatever the window sends for them is ignored.
-/// Returns the saved settings and whether the star size changed.
+/// Returns the saved settings and whether the mouce size changed.
 pub fn update_settings_impl(
     state: &AppState,
     incoming: Settings,
 ) -> Result<(Settings, bool), String> {
     let mut current = lock(state);
     let mut next = incoming;
-    next.star_position = current.star_position;
+    next.mouce_position = current.mouce_position;
     next.first_run_done = current.first_run_done;
     settings::save(&state.store, &next).map_err(|e| e.to_string())?;
-    let size_changed = current.star_size != next.star_size;
+    let size_changed = current.mouce_size != next.mouce_size;
     *current = next.clone();
     Ok((next, size_changed))
 }
@@ -100,11 +100,11 @@ pub fn update_settings(
     settings: Settings,
 ) -> Result<Settings, String> {
     let (saved, size_changed) = update_settings_impl(&state, settings)?;
-    let _ = app.emit(star::SETTINGS_CHANGED_EVENT, &saved);
+    let _ = app.emit(mouce::SETTINGS_CHANGED_EVENT, &saved);
     if size_changed {
         // The settings are already saved; a window that could not resize is not an error.
-        let resized = star::resize(&app, saved.star_size);
-        log_best_effort("resize the star after saving settings", resized, |m| eprintln!("{m}"));
+        let resized = mouce::resize(&app, saved.mouce_size);
+        log_best_effort("resize the mouce after saving settings", resized, |m| eprintln!("{m}"));
     }
     Ok(saved)
 }
@@ -215,10 +215,10 @@ pub async fn test_provider(
     state: State<'_, AppState>,
     provider: ProviderId,
 ) -> Result<String, String> {
-    let _ = app.emit(star::STAR_STATE_EVENT, "thinking");
+    let _ = app.emit(mouce::MOUCE_STATE_EVENT, "thinking");
     // Back to idle however this ends: finished, failed, cancelled or panicked.
     let _idle = OnDrop::new(|| {
-        let _ = app.emit(star::STAR_STATE_EVENT, "idle");
+        let _ = app.emit(mouce::MOUCE_STATE_EVENT, "idle");
     });
     test_provider_impl(&state, provider).await
 }
@@ -319,8 +319,8 @@ pub fn finish_first_run_impl(state: &AppState) -> Result<Settings, String> {
 #[tauri::command(async)]
 pub fn finish_first_run(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let saved = finish_first_run_impl(&state)?;
-    let _ = app.emit(star::SETTINGS_CHANGED_EVENT, &saved);
-    if let Some(window) = app.get_webview_window(star::FIRSTRUN_LABEL) {
+    let _ = app.emit(mouce::SETTINGS_CHANGED_EVENT, &saved);
+    if let Some(window) = app.get_webview_window(mouce::FIRSTRUN_LABEL) {
         // First run is already saved as done; a window that would not close is not an error.
         log_best_effort("close the first-run window", window.close(), |m| eprintln!("{m}"));
     }
@@ -331,7 +331,7 @@ pub fn finish_first_run(app: AppHandle, state: State<'_, AppState>) -> Result<()
 mod tests {
     use super::*;
     use crate::ollama_setup::OllamaStatus;
-    use crate::settings::{ProviderId, Settings, StarSize};
+    use crate::settings::{ProviderId, Settings, MouceSize};
     use crate::store::AppStore;
     use crate::AppState;
     use std::path::Path;
@@ -350,7 +350,7 @@ mod tests {
     }
 
     fn state(settings: Settings) -> (tempfile::TempDir, AppState) {
-        state_with(settings, "com.desktopstar.app.test.commands.unused")
+        state_with(settings, "com.mouce.app.test.commands.unused")
     }
 
     fn state_for(server: &MockServer) -> (tempfile::TempDir, AppState) {
@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn get_settings_returns_current() {
-        let s = Settings { star_rotation: false, ..Default::default() };
+        let s = Settings { mouce_rotation: false, ..Default::default() };
         let (_d, st) = state(s.clone());
         assert_eq!(get_settings_impl(&st), s);
     }
@@ -375,8 +375,8 @@ mod tests {
     fn update_settings_persists_and_returns_new_settings() {
         let (_d, st) = state(Settings::default());
         let next = Settings {
-            star_size: StarSize::Large,
-            star_rotation: false,
+            mouce_size: MouceSize::Large,
+            mouce_rotation: false,
             history_enabled: true,
             ..Default::default()
         };
@@ -393,18 +393,18 @@ mod tests {
     #[test]
     fn update_settings_keeps_backend_owned_fields() {
         let current =
-            Settings { star_position: Some((5, 6)), first_run_done: true, ..Default::default() };
+            Settings { mouce_position: Some((5, 6)), first_run_done: true, ..Default::default() };
         let (_d, st) = state(current);
         let stale = Settings {
-            star_position: Some((1, 1)),
+            mouce_position: Some((1, 1)),
             first_run_done: false,
-            star_rotation: false,
+            mouce_rotation: false,
             ..Default::default()
         };
         let (saved, _) = update_settings_impl(&st, stale).unwrap();
-        assert_eq!(saved.star_position, Some((5, 6)));
+        assert_eq!(saved.mouce_position, Some((5, 6)));
         assert!(saved.first_run_done);
-        assert!(!saved.star_rotation);
+        assert!(!saved.mouce_rotation);
     }
 
     #[test]
@@ -436,7 +436,7 @@ mod tests {
     #[test]
     fn api_key_commands_trim_reject_blank_and_clear() {
         let _lock = crate::secrets::test_support::lock_credential_store();
-        let service = "com.desktopstar.app.test.commands.api_key";
+        let service = "com.mouce.app.test.commands.api_key";
         let (_d, st) = state_with(Settings::default(), service);
         let g = Cleanup(st);
         let st = &g.0;
@@ -705,21 +705,21 @@ mod tests {
     #[test]
     fn failure_after_a_successful_save_is_logged_not_returned() {
         let mut logged = Vec::new();
-        log_best_effort("resize the star", Err::<(), _>("window is gone"), |m| logged.push(m));
-        assert_eq!(logged, vec!["could not resize the star: window is gone"]);
+        log_best_effort("resize the mouce", Err::<(), _>("window is gone"), |m| logged.push(m));
+        assert_eq!(logged, vec!["could not resize the mouce: window is gone"]);
 
         let mut quiet = Vec::new();
-        log_best_effort("resize the star", Ok::<(), String>(()), |m| quiet.push(m));
+        log_best_effort("resize the mouce", Ok::<(), String>(()), |m| quiet.push(m));
         assert!(quiet.is_empty());
     }
 
     #[test]
     fn finish_first_run_sets_flag_and_persists() {
-        let s = Settings { star_rotation: false, ..Default::default() };
+        let s = Settings { mouce_rotation: false, ..Default::default() };
         let (_d, st) = state(s);
         let done = finish_first_run_impl(&st).unwrap();
         assert!(done.first_run_done);
-        assert!(!done.star_rotation);
+        assert!(!done.mouce_rotation);
         assert!(crate::settings::load(&st.store).first_run_done);
         assert!(get_settings_impl(&st).first_run_done);
     }

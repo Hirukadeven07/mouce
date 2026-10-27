@@ -12,9 +12,9 @@ const baseSettings: Settings = {
   provider: "ollama",
   models: {},
   ollama_base_url: "http://localhost:11434",
-  star_size: "medium",
-  star_rotation: true,
-  star_position: null,
+  mouce_size: "medium",
+  mouce_rotation: true,
+  mouce_position: null,
   circle_hotkey: "Ctrl+Alt+Space",
   history_enabled: false,
   fallback_to_local: true,
@@ -100,13 +100,13 @@ describe("Settings", () => {
     expect(ipc.testProvider).toHaveBeenCalledWith("ollama");
   });
 
-  it("toggling rotate calls updateSettings with star_rotation false", async () => {
+  it("toggling rotate calls updateSettings with mouce_rotation false", async () => {
     const user = userEvent.setup();
     await renderSettings();
     await user.click(screen.getByRole("checkbox", { name: "Sway" }));
     await waitFor(() =>
       expect(ipc.updateSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ star_rotation: false }),
+        expect.objectContaining({ mouce_rotation: false }),
       ),
     );
     await waitFor(() => expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked());
@@ -188,10 +188,10 @@ describe("Settings", () => {
     expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked();
 
     expect(listeners.length).toBeGreaterThan(0);
-    act(() => listeners.forEach((cb) => cb({ ...baseSettings, star_rotation: true })));
+    act(() => listeners.forEach((cb) => cb({ ...baseSettings, mouce_rotation: true })));
     expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked();
 
-    await act(async () => finish({ ...baseSettings, star_rotation: false }));
+    await act(async () => finish({ ...baseSettings, mouce_rotation: false }));
     expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked();
   });
 

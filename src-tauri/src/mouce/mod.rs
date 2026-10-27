@@ -1,8 +1,8 @@
-//! The star window: a tiny always-on-top, transparent, never-activating window.
+//! The mouce window: a tiny always-on-top, transparent, never-activating window.
 
 pub mod position;
 
-use crate::settings::{self, Settings, StarSize};
+use crate::settings::{self, Settings, MouceSize};
 use position::{clamp_to_monitors, default_position, keep_inside, Rect};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -17,20 +17,20 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
-pub const STAR_LABEL: &str = "star";
+pub const MOUCE_LABEL: &str = "mouce";
 pub const SETTINGS_LABEL: &str = "settings";
 pub const FIRSTRUN_LABEL: &str = "firstrun";
 
 /// Event to the webview: payload `"idle" | "thinking" | "looking" | "reminder"`.
-pub const STAR_STATE_EVENT: &str = "star-state";
+pub const MOUCE_STATE_EVENT: &str = "mouce-state";
 /// Event to the webview: payload is the full `Settings`.
 pub const SETTINGS_CHANGED_EVENT: &str = "settings-changed";
 
-/// Extra logical pixels around the star so its glow is not clipped.
+/// Extra logical pixels around the mouce so its glow is not clipped.
 const GLOW_PADDING: u32 = 12;
 const SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
 
-fn window_logical_size(size: StarSize) -> u32 {
+fn window_logical_size(size: MouceSize) -> u32 {
     size.px() + GLOW_PADDING
 }
 
@@ -41,8 +41,8 @@ fn work_area_of(m: &Monitor) -> Rect {
 
 /// Saved position if it still fits fully on some monitor, else bottom-right of the primary one.
 fn initial_position(app: &AppHandle, settings: &Settings) -> tauri::Result<(i32, i32)> {
-    let logical = window_logical_size(settings.star_size);
-    if let Some(saved) = settings.star_position {
+    let logical = window_logical_size(settings.mouce_size);
+    if let Some(saved) = settings.mouce_position {
         for m in app.available_monitors()? {
             let physical = (logical as f64 * m.scale_factor()).round() as u32;
             if let Some(p) = clamp_to_monitors(saved, physical, &[work_area_of(&m)]) {
@@ -66,21 +66,21 @@ fn apply_no_focus_styles(window: &tauri::WebviewWindow) -> tauri::Result<()> {
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | needed);
         GetWindowLongPtrW(hwnd, GWL_EXSTYLE)
     };
-    // Never-stealing-focus is a core property of the star: fail loudly if it did not stick.
+    // Never-stealing-focus is a core property of the mouce: fail loudly if it did not stick.
     if applied & needed != needed {
         return Err(tauri::Error::Io(std::io::Error::other(
-            "could not apply the no-focus window style to the star",
+            "could not apply the no-focus window style to the mouce",
         )));
     }
     Ok(())
 }
 
-/// Shows the star without activating it, so it never takes keyboard focus from the user.
+/// Shows the mouce without activating it, so it never takes keyboard focus from the user.
 ///
 /// `window.show()` is not usable here: tao drops its "do not focus" marker once a window is
 /// built, so a later `show()` calls `ShowWindow(SW_SHOW)`, which activates the window.
 /// `SW_SHOWNOACTIVATE` shows it and leaves the foreground window alone. tao's own "visible"
-/// flag is not touched (it stays as built), so the star is always shown and hidden through
+/// flag is not touched (it stays as built), so the mouce is always shown and hidden through
 /// this function and `hide`, never through `window.show()` / `window.hide()`. Visibility
 /// queries (`is_visible`) ask Windows directly and stay correct.
 pub fn show_without_focus(window: &tauri::WebviewWindow) -> tauri::Result<()> {
@@ -93,7 +93,7 @@ pub fn show_without_focus(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Hides the star. Pairs with `show_without_focus` (see there for why not `window.hide()`).
+/// Hides the mouce. Pairs with `show_without_focus` (see there for why not `window.hide()`).
 pub fn hide(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     let hwnd = window.hwnd()?;
     // SAFETY: as in `show_without_focus`.
@@ -103,7 +103,7 @@ pub fn hide(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Debounced persistence of the star position after the user drags it.
+/// Debounced persistence of the mouce position after the user drags it.
 fn watch_moves(app: &AppHandle, window: &tauri::WebviewWindow) {
     let generation = Arc::new(AtomicU64::new(0));
     let app = app.clone();
@@ -126,9 +126,9 @@ fn watch_moves(app: &AppHandle, window: &tauri::WebviewWindow) {
                 // Save while holding the lock so a concurrent settings update cannot be
                 // overwritten by this (older) snapshot.
                 let mut s = state.settings.lock().unwrap_or_else(|e| e.into_inner());
-                s.star_position = Some(pos);
+                s.mouce_position = Some(pos);
                 if let Err(e) = settings::save(&state.store, &s) {
-                    eprintln!("could not save star position: {e}");
+                    eprintln!("could not save mouce position: {e}");
                 }
             }
         });
@@ -136,11 +136,11 @@ fn watch_moves(app: &AppHandle, window: &tauri::WebviewWindow) {
 }
 
 pub fn create(app: &AppHandle, settings: &Settings) -> tauri::Result<()> {
-    let logical = window_logical_size(settings.star_size) as f64;
+    let logical = window_logical_size(settings.mouce_size) as f64;
     let (x, y) = initial_position(app, settings)?;
 
-    let window = WebviewWindowBuilder::new(app, STAR_LABEL, WebviewUrl::App("index.html".into()))
-        .title("Star")
+    let window = WebviewWindowBuilder::new(app, MOUCE_LABEL, WebviewUrl::App("index.html".into()))
+        .title("mouce")
         .inner_size(logical, logical)
         .transparent(true)
         .decorations(false)
@@ -159,9 +159,9 @@ pub fn create(app: &AppHandle, settings: &Settings) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Applies a new star size to the live window, keeping it inside the work area.
-pub fn resize(app: &AppHandle, size: StarSize) -> tauri::Result<()> {
-    let Some(window) = app.get_webview_window(STAR_LABEL) else { return Ok(()) };
+/// Applies a new mouce size to the live window, keeping it inside the work area.
+pub fn resize(app: &AppHandle, size: MouceSize) -> tauri::Result<()> {
+    let Some(window) = app.get_webview_window(MOUCE_LABEL) else { return Ok(()) };
     let logical = window_logical_size(size) as f64;
 
     match window.current_monitor()? {

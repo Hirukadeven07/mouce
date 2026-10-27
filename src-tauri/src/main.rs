@@ -3,5 +3,5 @@
 
 // An error from `run` (already shown to the user in a message box) exits with code 1.
 fn main() -> Result<(), String> {
-    desktop_star_lib::run()
+    mouce_lib::run()
 }

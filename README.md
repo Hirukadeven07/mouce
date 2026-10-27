@@ -113,7 +113,7 @@ cd src-tauri && cargo test   # Rust, including the safety scan
 ```
 mouce/
 ├── src/                  # React + TypeScript UI
-│   ├── star/             # the on-screen companion window
+│   ├── mouce/             # the on-screen companion window
 │   ├── settings/         # Settings window
 │   ├── firstrun/         # first-run setup
 │   └── lib/              # IPC bindings and shared types
@@ -138,4 +138,4 @@ mouce/
 - [ ] **Packaging:** a signed Windows installer
 
 The full design is in
-[`docs/superpowers/specs/2026-10-27-desktop-star-design.md`](docs/superpowers/specs/2026-10-27-desktop-star-design.md).
+[`docs/superpowers/specs/2026-10-27-mouce-design.md`](docs/superpowers/specs/2026-10-27-mouce-design.md).

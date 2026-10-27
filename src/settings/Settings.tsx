@@ -1,10 +1,10 @@
 import { useEffect, useId, useState } from "react";
 import { getAutostart, setAutostart } from "../lib/ipc";
-import type { StarSize } from "../lib/types";
+import type { MouceSize } from "../lib/types";
 import { AiSettings } from "./AiSettings";
 import { errorText, useSettings } from "./useSettings";
 
-const SIZES: Array<{ id: StarSize; label: string }> = [
+const SIZES: Array<{ id: MouceSize; label: string }> = [
   { id: "small", label: "Small" },
   { id: "medium", label: "Medium" },
   { id: "large", label: "Large" },
@@ -66,13 +66,13 @@ export function Settings() {
       </section>
 
       <section>
-        <h2>Mouse</h2>
+        <h2>Appearance</h2>
         <div className="field">
           <label htmlFor={ids.size}>Size</label>
           <select
             id={ids.size}
-            value={settings.star_size}
-            onChange={(e) => void save({ star_size: e.target.value as StarSize })}
+            value={settings.mouce_size}
+            onChange={(e) => void save({ mouce_size: e.target.value as MouceSize })}
           >
             {SIZES.map((s) => (
               <option key={s.id} value={s.id}>
@@ -85,8 +85,8 @@ export function Settings() {
           <input
             id={ids.rotate}
             type="checkbox"
-            checked={settings.star_rotation}
-            onChange={(e) => void save({ star_rotation: e.target.checked })}
+            checked={settings.mouce_rotation}
+            onChange={(e) => void save({ mouce_rotation: e.target.checked })}
           />
           <label htmlFor={ids.rotate}>Sway</label>
         </div>
