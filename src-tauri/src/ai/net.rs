@@ -35,16 +35,45 @@ pub fn check_allowed(url: &Url) -> Result<(), AiError> {
     }
 }
 
-/// HTTP client: 10 s connect timeout, no overall timeout (responses stream),
-/// and every redirect hop must pass `check_allowed`.
+/// Why the redirect policy stopped a redirect chain.
+#[derive(Debug)]
+enum RedirectStopped {
+    NotAllowed(String),
+    TooMany,
+}
+
+impl std::fmt::Display for RedirectStopped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RedirectStopped::NotAllowed(host) => write!(f, "redirect to {host} blocked"),
+            RedirectStopped::TooMany => write!(f, "too many redirects"),
+        }
+    }
+}
+
+impl std::error::Error for RedirectStopped {}
+
+fn same_origin(a: &Url, b: &Url) -> bool {
+    a.scheme() == b.scheme()
+        && a.host_str() == b.host_str()
+        && a.port_or_known_default() == b.port_or_known_default()
+}
+
+/// HTTP client: 10 s connect timeout, no overall timeout (responses stream).
+/// Redirects are followed only within the original scheme, host and port, so
+/// credential headers never travel to another host; other hops are refused.
 pub fn client() -> reqwest::Client {
     let policy = reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() >= MAX_REDIRECTS {
-            attempt.error("too many redirects")
-        } else if let Err(e) = check_allowed(attempt.url()) {
-            attempt.error(e.to_string())
-        } else {
+            return attempt.error(RedirectStopped::TooMany);
+        }
+        let allowed = check_allowed(attempt.url()).is_ok()
+            && attempt.previous().first().is_some_and(|origin| same_origin(origin, attempt.url()));
+        if allowed {
             attempt.follow()
+        } else {
+            let host = attempt.url().host_str().unwrap_or("unknown host").to_string();
+            attempt.error(RedirectStopped::NotAllowed(host))
         }
     });
     reqwest::Client::builder()
@@ -54,11 +83,36 @@ pub fn client() -> reqwest::Client {
         .expect("build HTTP client")
 }
 
-/// Sends `req` (which targets `url`) after checking the allowlist; non-2xx becomes `AiError::Http`.
+fn map_send_error(e: reqwest::Error) -> AiError {
+    let mut source = std::error::Error::source(&e);
+    while let Some(err) = source {
+        if let Some(stopped) = err.downcast_ref::<RedirectStopped>() {
+            return match stopped {
+                RedirectStopped::NotAllowed(host) => AiError::NotAllowed(host.clone()),
+                RedirectStopped::TooMany => AiError::Network(stopped.to_string()),
+            };
+        }
+        source = err.source();
+    }
+    // `without_url` keeps query-string credentials out of error text.
+    AiError::Network(e.without_url().to_string())
+}
+
+/// Sends `req` (which must target `url`) after checking the allowlist on both
+/// `url` and the request's real URL; non-2xx becomes `AiError::Http`.
 pub async fn send(req: reqwest::RequestBuilder, url: &Url) -> Result<reqwest::Response, AiError> {
     check_allowed(url)?;
-    // `without_url` keeps query-string credentials out of error text.
-    let resp = req.send().await.map_err(|e| AiError::Network(e.without_url().to_string()))?;
+    let (client, request) = req.build_split();
+    let request = request.map_err(|e| AiError::Network(e.without_url().to_string()))?;
+    check_allowed(request.url())?;
+    if request.url().origin() != url.origin() {
+        return Err(AiError::NotAllowed(format!(
+            "request targets {} but {} was approved",
+            request.url().host_str().unwrap_or("unknown host"),
+            url.host_str().unwrap_or("unknown host")
+        )));
+    }
+    let resp = client.execute(request).await.map_err(map_send_error)?;
     if resp.status().is_success() {
         Ok(resp)
     } else {
@@ -134,7 +188,7 @@ pub fn sse_data(line: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::method;
+    use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn u(s: &str) -> Url {
@@ -225,16 +279,77 @@ mod tests {
         assert!(matches!(err, AiError::NotAllowed(_)));
     }
 
+    fn redirect_to(location: String) -> Mock {
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(302).insert_header("location", location.as_str()))
+    }
+
+    async fn request_count(server: &MockServer) -> usize {
+        server.received_requests().await.unwrap().len()
+    }
+
     #[tokio::test]
-    async fn redirect_to_disallowed_host_is_rejected() {
+    async fn redirect_to_non_allowlisted_host_is_rejected() {
+        // 127.0.0.2 is loopback but not an allowlisted host name.
+        let listener = std::net::TcpListener::bind("127.0.0.2:0").expect("bind 127.0.0.2");
+        let target = MockServer::builder().listener(listener).start().await;
+        let source = MockServer::start().await;
+        redirect_to(format!("{}/x", target.uri())).mount(&source).await;
+        Mock::given(method("GET")).respond_with(ResponseTemplate::new(200)).mount(&target).await;
+
+        let url = u(&source.uri());
+        let err = send(client().get(url.clone()), &url).await.unwrap_err();
+        assert!(matches!(err, AiError::NotAllowed(_)), "{err:?}");
+        assert_eq!(request_count(&target).await, 0);
+    }
+
+    #[tokio::test]
+    async fn redirect_to_other_allowlisted_origin_is_rejected() {
+        // Both servers are 127.0.0.1 (allowlisted) but on different ports.
+        let target = MockServer::start().await;
+        let source = MockServer::start().await;
+        redirect_to(format!("{}/x", target.uri())).mount(&source).await;
+        Mock::given(method("GET")).respond_with(ResponseTemplate::new(200)).mount(&target).await;
+
+        let url = u(&source.uri());
+        let err = send(client().get(url.clone()), &url).await.unwrap_err();
+        assert!(matches!(err, AiError::NotAllowed(_)), "{err:?}");
+        assert_eq!(request_count(&target).await, 0);
+    }
+
+    #[tokio::test]
+    async fn same_origin_redirect_is_followed() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(302).insert_header("location", "https://evil.com/x"))
+            .and(path("/a"))
+            .respond_with(ResponseTemplate::new(302).insert_header("location", "/b"))
             .mount(&server)
             .await;
-        let url = u(&server.uri());
-        let err = send(client().get(url.clone()), &url).await.unwrap_err();
-        assert!(matches!(err, AiError::Network(_) | AiError::NotAllowed(_)), "{err:?}");
+        Mock::given(method("GET"))
+            .and(path("/b"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+            .mount(&server)
+            .await;
+        let url = u(&format!("{}/a", server.uri()));
+        let resp = send(client().get(url.clone()), &url).await.unwrap();
+        assert_eq!(resp.text().await.unwrap(), "ok");
+    }
+
+    #[tokio::test]
+    async fn send_rejects_request_that_targets_unapproved_url() {
+        let approved = MockServer::start().await;
+        let other = MockServer::start().await;
+        let url = u(&approved.uri());
+
+        // Builder aims at a disallowed host while `url` is allowed.
+        let err = send(client().get("https://evil.com/x"), &url).await.unwrap_err();
+        assert!(matches!(err, AiError::NotAllowed(_)), "{err:?}");
+
+        // Builder aims at another allowed origin than the approved one.
+        let err = send(client().get(other.uri()), &url).await.unwrap_err();
+        assert!(matches!(err, AiError::NotAllowed(_)), "{err:?}");
+        assert_eq!(request_count(&other).await, 0);
+        assert_eq!(request_count(&approved).await, 0);
     }
 
     #[tokio::test]
