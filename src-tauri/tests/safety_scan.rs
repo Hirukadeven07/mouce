@@ -148,6 +148,32 @@ fn no_forbidden_dependencies() {
     );
 }
 
+#[test]
+fn no_command_returns_an_api_key() {
+    let src = manifest_dir().join("src");
+    let commands = fs::read_to_string(src.join("commands.rs")).expect("read commands.rs");
+    assert!(!commands.contains("fn get_api_key"), "commands.rs must not define get_api_key");
+    assert!(!commands.contains("fn get_key"), "no command may wrap Secrets::get_key");
+    let lib = fs::read_to_string(src.join("lib.rs")).expect("read lib.rs");
+    assert!(!lib.contains("get_api_key"), "lib.rs must not register get_api_key");
+}
+
+#[test]
+fn opener_is_only_used_for_the_fixed_download_url() {
+    let src = manifest_dir().join("src");
+    let mut files = Vec::new();
+    rust_files(&src, &mut files);
+    let users: Vec<_> = files
+        .iter()
+        .filter(|f| fs::read_to_string(f).unwrap().contains(".opener()"))
+        .collect();
+    assert_eq!(users, vec![&src.join("commands.rs")], "opener used outside commands.rs");
+    let commands = fs::read_to_string(src.join("commands.rs")).unwrap();
+    // One use in the command, one mention in this guard's own source is not scanned here.
+    assert_eq!(commands.matches(".opener()").count(), 1);
+    assert!(commands.contains("open_url(OLLAMA_DOWNLOAD_URL"));
+}
+
 fn capability_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(dir).expect("read capabilities dir");
     for entry in entries.flatten() {

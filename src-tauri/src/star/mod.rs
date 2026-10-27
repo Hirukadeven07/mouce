@@ -17,6 +17,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 pub const STAR_LABEL: &str = "star";
 pub const SETTINGS_LABEL: &str = "settings";
+pub const FIRSTRUN_LABEL: &str = "firstrun";
 
 /// Event to the webview: payload `"idle" | "thinking" | "looking" | "reminder"`.
 pub const STAR_STATE_EVENT: &str = "star-state";
@@ -56,11 +57,18 @@ fn initial_position(app: &AppHandle, settings: &Settings) -> tauri::Result<(i32,
 /// Makes the window non-activating (clicks never steal focus) and hides it from Alt+Tab.
 fn apply_no_focus_styles(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     let hwnd = window.hwnd()?;
+    let needed = (WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0) as isize;
     // SAFETY: `hwnd` is the live handle of a window owned by this process.
-    unsafe {
+    let applied = unsafe {
         let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        let wanted = ex | (WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0) as isize;
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, wanted);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | needed);
+        GetWindowLongPtrW(hwnd, GWL_EXSTYLE)
+    };
+    // Never-stealing-focus is a core property of the star: fail loudly if it did not stick.
+    if applied & needed != needed {
+        return Err(tauri::Error::Io(std::io::Error::other(
+            "could not apply the no-focus window style to the star",
+        )));
     }
     Ok(())
 }
@@ -85,12 +93,11 @@ fn watch_moves(app: &AppHandle, window: &tauri::WebviewWindow) {
                 return;
             }
             if let Some(state) = app.try_state::<crate::AppState>() {
-                let snapshot = {
-                    let mut s = state.settings.lock().unwrap_or_else(|e| e.into_inner());
-                    s.star_position = Some(pos);
-                    s.clone()
-                };
-                if let Err(e) = settings::save(&state.store, &snapshot) {
+                // Save while holding the lock so a concurrent settings update cannot be
+                // overwritten by this (older) snapshot.
+                let mut s = state.settings.lock().unwrap_or_else(|e| e.into_inner());
+                s.star_position = Some(pos);
+                if let Err(e) = settings::save(&state.store, &s) {
                     eprintln!("could not save star position: {e}");
                 }
             }
@@ -142,9 +149,9 @@ pub fn resize(app: &AppHandle, size: StarSize) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Focuses the Settings window, creating it first if needed.
-pub fn open_settings(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(SETTINGS_LABEL) {
+/// Focuses the window `label`, creating it first if needed.
+fn open_window(app: &AppHandle, label: &'static str, title: &'static str, size: (f64, f64)) {
+    if let Some(w) = app.get_webview_window(label) {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
@@ -153,15 +160,24 @@ pub fn open_settings(app: &AppHandle) {
     // Windows can deadlock when a window is built from the event-loop thread; build elsewhere.
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let built =
-            WebviewWindowBuilder::new(&app, SETTINGS_LABEL, WebviewUrl::App("index.html".into()))
-                .title("Star Settings")
-                .inner_size(480.0, 640.0)
-                .decorations(true)
-                .center()
-                .build();
+        let built = WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
+            .title(title)
+            .inner_size(size.0, size.1)
+            .decorations(true)
+            .center()
+            .build();
         if let Err(e) = built {
-            eprintln!("could not open settings window: {e}");
+            eprintln!("could not open {label} window: {e}");
         }
     });
+}
+
+/// Focuses the Settings window, creating it first if needed.
+pub fn open_settings(app: &AppHandle) {
+    open_window(app, SETTINGS_LABEL, "Star Settings", (480.0, 640.0));
+}
+
+/// Focuses the first-run welcome window, creating it first if needed.
+pub fn open_firstrun(app: &AppHandle) {
+    open_window(app, FIRSTRUN_LABEL, "Welcome to Star", (520.0, 600.0));
 }
