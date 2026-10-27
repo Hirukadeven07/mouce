@@ -254,12 +254,12 @@ fn open_window(app: &AppHandle, label: &'static str, title: &'static str, size: 
 
 /// Focuses the Settings window, creating it first if needed.
 pub fn open_settings(app: &AppHandle) {
-    open_window(app, SETTINGS_LABEL, "Mouce Settings", (480.0, 640.0));
+    open_window(app, SETTINGS_LABEL, "mouce Settings", (480.0, 640.0));
 }
 
 /// Focuses the first-run welcome window, creating it first if needed.
 pub fn open_firstrun(app: &AppHandle) {
-    open_window(app, FIRSTRUN_LABEL, "Welcome to Mouce", (520.0, 600.0));
+    open_window(app, FIRSTRUN_LABEL, "Welcome to mouce", (520.0, 600.0));
 }
 
 #[cfg(test)]

@@ -71,7 +71,7 @@ fn on_second_launch(app: &tauri::AppHandle) {
 fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = app.path().app_data_dir()?;
     let store = AppStore::open(data_dir.clone()).map_err(|e| {
-        format!("Mouce could not open its data folder at {}: {e}", data_dir.display())
+        format!("mouce could not open its data folder at {}: {e}", data_dir.display())
     })?;
     let settings = settings::load(&store);
     app.manage(AppState::new(store, settings.clone(), Secrets::new("com.desktopstar.app")));

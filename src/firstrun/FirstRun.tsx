@@ -81,7 +81,7 @@ function ChooseAi(props: { onNext: () => void }) {
 
       {!ready && status?.state === "notInstalled" && (
         <>
-          <p>Mouce can use a free AI that runs on this laptop, or an online AI with your own key.</p>
+          <p>mouce can use a free AI that runs on this laptop, or an online AI with your own key.</p>
           <div className="row">
             <button type="button" onClick={() => void getOllama()}>
               Get Ollama (free, runs on this laptop)
@@ -108,7 +108,7 @@ function ChooseAi(props: { onNext: () => void }) {
 
       {needsModel && (
         <>
-          <p>Ollama is running. Mouce needs one model to start with.</p>
+          <p>Ollama is running. mouce needs one model to start with.</p>
           <div className="row">
             <button type="button" disabled={pulling} onClick={() => void download()}>
               Download {DEFAULT_LOCAL_MODEL} (about 3 GB)
@@ -178,7 +178,7 @@ export function FirstRun() {
     <main className="page firstrun">
       {step === 1 && (
         <>
-          <h1>Hi, I'm Mouce.</h1>
+          <h1>Hi, I'm mouce.</h1>
           <p>
             I'm a tiny star that lives on your desktop and helps you understand what's on your
             screen. I can never open, change, delete or run anything on your computer.
@@ -190,7 +190,7 @@ export function FirstRun() {
               checked={autostart}
               onChange={(e) => setAutostartChoice(e.target.checked)}
             />
-            <label htmlFor={startupId}>Start Mouce when Windows starts</label>
+            <label htmlFor={startupId}>Start mouce when Windows starts</label>
           </div>
           <div className="footer">
             <button type="button" className="primary" onClick={() => setStep(2)}>

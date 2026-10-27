@@ -9,7 +9,7 @@ import {
 import { starSizePx, type Settings, type StarState } from "../lib/types";
 import logoUrl from "../assets/mouce.png";
 
-// The Mouce logo, cut out of images/mouce logo.jpg with a transparent
+// The mouce logo, cut out of images/mouce logo.jpg with a transparent
 // background (src-tauri/icons/mouce.png is the same cutout at 512px).
 export function Star(props: { state: StarState; rotate: boolean; sizePx: number }) {
   const { state, rotate, sizePx } = props;
@@ -57,7 +57,7 @@ export function StarWindow() {
     <div
       className="star-window"
       role="button"
-      aria-label="Mouce — click to open settings"
+      aria-label="mouce — click to open settings"
       onContextMenu={(e) => e.preventDefault()}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
