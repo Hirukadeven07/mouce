@@ -1,0 +1,17 @@
+[package]
+name = "desktop-star"
+version = "0.1.0"
+description = "Star"
+edition = "2021"
+
+[lib]
+name = "desktop_star_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = "2"
+
+[dependencies]
+tauri = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
