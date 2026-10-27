@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod ollama_setup;
 pub mod secrets;
 pub mod settings;
 pub mod store;
