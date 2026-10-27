@@ -88,12 +88,12 @@ pub fn update_settings_impl(
     Ok((next, size_changed))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_settings(state: State<'_, AppState>) -> Settings {
     get_settings_impl(&state)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_settings(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -123,7 +123,7 @@ pub fn clear_api_key_impl(state: &AppState, provider: ProviderId) -> Result<(), 
     state.secrets.clear_key(provider).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_api_key(
     state: State<'_, AppState>,
     provider: ProviderId,
@@ -132,12 +132,12 @@ pub fn set_api_key(
     set_api_key_impl(&state, provider, &key)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn has_api_key(state: State<'_, AppState>, provider: ProviderId) -> bool {
     has_api_key_impl(&state, provider)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clear_api_key(state: State<'_, AppState>, provider: ProviderId) -> Result<(), String> {
     clear_api_key_impl(&state, provider)
 }
@@ -296,12 +296,12 @@ pub fn open_ollama_download(app: AppHandle) -> Result<(), String> {
 
 // ---- startup and first run ----
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_autostart(app: AppHandle) -> Result<bool, String> {
     app.autolaunch().is_enabled().map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
     let launch = app.autolaunch();
     if enabled { launch.enable() } else { launch.disable() }.map_err(|e| e.to_string())
@@ -316,7 +316,7 @@ pub fn finish_first_run_impl(state: &AppState) -> Result<Settings, String> {
     Ok(next)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn finish_first_run(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let saved = finish_first_run_impl(&state)?;
     let _ = app.emit(star::SETTINGS_CHANGED_EVENT, &saved);
