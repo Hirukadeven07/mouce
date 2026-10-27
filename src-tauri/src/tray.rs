@@ -3,8 +3,8 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 
-const PAUSE_LABEL: &str = "Pause star";
-const SHOW_LABEL: &str = "Show star";
+const PAUSE_LABEL: &str = "Pause mouse";
+const SHOW_LABEL: &str = "Show mouse";
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
@@ -82,11 +82,11 @@ mod tests {
 
     #[test]
     fn a_visible_star_is_hidden_and_the_menu_offers_to_show_it() {
-        assert_eq!(toggle_for(true), Toggle { show: false, label: "Show star" });
+        assert_eq!(toggle_for(true), Toggle { show: false, label: "Show mouse" });
     }
 
     #[test]
     fn a_hidden_star_is_shown_and_the_menu_offers_to_pause_it() {
-        assert_eq!(toggle_for(false), Toggle { show: true, label: "Pause star" });
+        assert_eq!(toggle_for(false), Toggle { show: true, label: "Pause mouse" });
     }
 }

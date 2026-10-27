@@ -66,7 +66,7 @@ export function Settings() {
       </section>
 
       <section>
-        <h2>Star</h2>
+        <h2>Mouse</h2>
         <div className="field">
           <label htmlFor={ids.size}>Size</label>
           <select
@@ -88,7 +88,7 @@ export function Settings() {
             checked={settings.star_rotation}
             onChange={(e) => void save({ star_rotation: e.target.checked })}
           />
-          <label htmlFor={ids.rotate}>Rotate</label>
+          <label htmlFor={ids.rotate}>Sway</label>
         </div>
       </section>
 

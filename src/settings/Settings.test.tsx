@@ -103,13 +103,13 @@ describe("Settings", () => {
   it("toggling rotate calls updateSettings with star_rotation false", async () => {
     const user = userEvent.setup();
     await renderSettings();
-    await user.click(screen.getByRole("checkbox", { name: "Rotate" }));
+    await user.click(screen.getByRole("checkbox", { name: "Sway" }));
     await waitFor(() =>
       expect(ipc.updateSettings).toHaveBeenCalledWith(
         expect.objectContaining({ star_rotation: false }),
       ),
     );
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Rotate" })).not.toBeChecked());
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked());
   });
 
   it("shows a Choose a model placeholder for a provider with no model yet", async () => {
@@ -184,15 +184,15 @@ describe("Settings", () => {
       () => new Promise<Settings>((resolve) => (finish = resolve)),
     );
     await renderSettings();
-    await user.click(screen.getByRole("checkbox", { name: "Rotate" }));
-    expect(screen.getByRole("checkbox", { name: "Rotate" })).not.toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: "Sway" }));
+    expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked();
 
     expect(listeners.length).toBeGreaterThan(0);
     act(() => listeners.forEach((cb) => cb({ ...baseSettings, star_rotation: true })));
-    expect(screen.getByRole("checkbox", { name: "Rotate" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked();
 
     await act(async () => finish({ ...baseSettings, star_rotation: false }));
-    expect(screen.getByRole("checkbox", { name: "Rotate" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked();
   });
 
   it("shows the privacy sentence", async () => {
