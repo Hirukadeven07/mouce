@@ -28,6 +28,11 @@ impl GeminiProvider {
         Self { base: base_url.trim_end_matches('/').to_string(), api_key, client: net::client() }
     }
 
+    /// Adds the key as a sensitive header; it never goes in the URL.
+    fn keyed(&self, builder: reqwest::RequestBuilder) -> Result<reqwest::RequestBuilder, AiError> {
+        Ok(builder.header("x-goog-api-key", net::secret_header(&self.api_key)?))
+    }
+
     /// `{base}/v1beta/models[/{last}]`; each segment is percent-encoded, so a
     /// model name cannot change the path or add query parameters.
     fn url(&self, last: Option<&str>) -> Result<Url, AiError> {
@@ -134,11 +139,7 @@ impl Provider for GeminiProvider {
     ) -> Result<String, AiError> {
         let mut url = self.url(Some(&format!("{}:streamGenerateContent", req.model)))?;
         url.query_pairs_mut().append_pair("alt", "sse");
-        let builder = self
-            .client
-            .post(url.clone())
-            .header("x-goog-api-key", &self.api_key)
-            .json(&request_body(req));
+        let builder = self.keyed(self.client.post(url.clone()))?.json(&request_body(req));
         let resp = net::send(builder, &url).await?;
         let mut full = String::new();
         let mut declined: Option<String> = None;
@@ -166,7 +167,7 @@ impl Provider for GeminiProvider {
     async fn list_models(&self) -> Result<Vec<String>, AiError> {
         let mut url = self.url(None)?;
         url.query_pairs_mut().append_pair("pageSize", "1000");
-        let builder = self.client.get(url.clone()).header("x-goog-api-key", &self.api_key);
+        let builder = self.keyed(self.client.get(url.clone()))?;
         let resp = net::send(builder, &url).await?;
         let text = resp.text().await.map_err(|e| AiError::Network(e.without_url().to_string()))?;
         let v: Value = serde_json::from_str(&text)
@@ -195,6 +196,17 @@ mod tests {
     use serde_json::{json, Value};
     use wiremock::matchers::{body_partial_json, header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn gemini_key_header_is_sensitive() {
+        let provider = GeminiProvider::new(GEMINI_BASE.into(), "g-test".into());
+        let built = provider
+            .keyed(provider.client.get("https://generativelanguage.googleapis.com/v1beta/models"))
+            .unwrap()
+            .build()
+            .unwrap();
+        assert!(built.headers().get("x-goog-api-key").expect("key header").is_sensitive());
+    }
 
     fn request() -> ChatRequest {
         ChatRequest {

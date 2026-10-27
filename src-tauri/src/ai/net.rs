@@ -64,6 +64,16 @@ fn same_origin(a: &Url, b: &Url) -> bool {
         && a.port_or_known_default() == b.port_or_known_default()
 }
 
+/// A header value holding a credential, marked sensitive so HTTP debug output (and any
+/// logging of the request) shows `Sensitive` instead of the key.
+pub fn secret_header(secret: &str) -> Result<reqwest::header::HeaderValue, AiError> {
+    let mut value = reqwest::header::HeaderValue::from_str(secret).map_err(|_| {
+        AiError::Network("The API key contains characters that cannot be sent".to_string())
+    })?;
+    value.set_sensitive(true);
+    Ok(value)
+}
+
 /// HTTP client: 10 s connect timeout, no overall timeout (responses stream).
 /// Redirects are followed only within the original scheme, host and port, so
 /// credential headers never travel to another host; other hops are refused.
@@ -270,6 +280,22 @@ mod tests {
 
     fn u(s: &str) -> Url {
         Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn secret_header_is_marked_sensitive() {
+        let value = secret_header("k-123").unwrap();
+        assert!(value.is_sensitive());
+        assert_eq!(value.as_bytes(), b"k-123");
+        assert_eq!(format!("{value:?}"), "Sensitive");
+    }
+
+    #[test]
+    fn secret_header_rejects_unsendable_keys_without_echoing_them() {
+        let err = secret_header("bad
+key-123").unwrap_err();
+        assert!(!err.to_string().contains("key-123"));
+        assert!(matches!(err, AiError::Network(_)));
     }
 
     #[test]

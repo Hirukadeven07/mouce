@@ -37,8 +37,10 @@ impl AnthropicProvider {
             .map_err(|_| AiError::Network("Invalid provider address".to_string()))
     }
 
-    fn authed(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        builder.header("x-api-key", &self.api_key).header("anthropic-version", API_VERSION)
+    fn authed(&self, builder: reqwest::RequestBuilder) -> Result<reqwest::RequestBuilder, AiError> {
+        Ok(builder
+            .header("x-api-key", net::secret_header(&self.api_key)?)
+            .header("anthropic-version", API_VERSION))
     }
 }
 
@@ -115,7 +117,7 @@ impl Provider for AnthropicProvider {
         on_delta: &mut (dyn for<'a> FnMut(&'a str) + Send),
     ) -> Result<String, AiError> {
         let url = self.url("/v1/messages")?;
-        let builder = self.authed(self.client.post(url.clone())).json(&request_body(req));
+        let builder = self.authed(self.client.post(url.clone()))?.json(&request_body(req));
         let resp = net::send(builder, &url).await?;
         let mut full = String::new();
         net::read_stream(resp, |line| {
@@ -133,7 +135,7 @@ impl Provider for AnthropicProvider {
     async fn list_models(&self) -> Result<Vec<String>, AiError> {
         let mut url = self.url("/v1/models")?;
         url.query_pairs_mut().append_pair("limit", "1000");
-        let resp = net::send(self.authed(self.client.get(url.clone())), &url).await?;
+        let resp = net::send(self.authed(self.client.get(url.clone()))?, &url).await?;
         let text = resp.text().await.map_err(|e| AiError::Network(e.without_url().to_string()))?;
         let v: Value = serde_json::from_str(&text)
             .map_err(|_| AiError::Parse("unreadable model list".to_string()))?;
@@ -156,6 +158,19 @@ mod tests {
     use serde_json::{json, Value};
     use wiremock::matchers::{body_partial_json, header, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn anthropic_key_header_is_sensitive() {
+        let provider = AnthropicProvider::new("https://api.anthropic.com".into(), "a-test".into());
+        let built = provider
+            .authed(provider.client.get("https://api.anthropic.com/v1/models"))
+            .unwrap()
+            .build()
+            .unwrap();
+        let key = built.headers().get("x-api-key").expect("key header");
+        assert!(key.is_sensitive());
+        assert!(!built.headers().get("anthropic-version").unwrap().is_sensitive());
+    }
 
     fn request() -> ChatRequest {
         ChatRequest {
