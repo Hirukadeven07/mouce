@@ -7,9 +7,9 @@ use windows::core::HSTRING;
 use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
 
 /// Title of the message box.
-pub const STARTUP_ERROR_TITLE: &str = "Mouce couldn't start";
+pub const STARTUP_ERROR_TITLE: &str = "mouce couldn't start";
 
-/// The text of the start-up error box: the error, and where Mouce keeps its settings.
+/// The text of the start-up error box: the error, and where mouce keeps its settings.
 pub fn startup_error_message(err: &str, data_dir: Option<&Path>) -> String {
     let mut text = err.trim().to_string();
     if let Some(dir) = data_dir {

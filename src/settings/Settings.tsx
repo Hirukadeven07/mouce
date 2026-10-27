@@ -57,7 +57,7 @@ export function Settings() {
 
   return (
     <main className="page">
-      <h1>Mouce settings</h1>
+      <h1>mouce settings</h1>
       {error && <p role="alert" className="error">{error}</p>}
 
       <section>
@@ -109,7 +109,7 @@ export function Settings() {
           <label htmlFor={ids.history}>Keep chat history</label>
         </div>
         <p className="muted">
-          Screen captures are only sent to the AI you pick above. Mouce cannot open, change, or delete
+          Screen captures are only sent to the AI you pick above. mouce cannot open, change, or delete
           your files.
         </p>
       </section>
@@ -124,7 +124,7 @@ export function Settings() {
             disabled={autostart === null || autostartBusy}
             onChange={(e) => void onAutostart(e.target.checked)}
           />
-          <label htmlFor={ids.startup}>Start Mouce when Windows starts</label>
+          <label htmlFor={ids.startup}>Start mouce when Windows starts</label>
         </div>
         {autostartError && <p role="alert" className="error">{autostartError}</p>}
       </section>

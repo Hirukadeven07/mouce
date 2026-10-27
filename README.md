@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="images/mouce-banner.jpg" alt="Mouce" width="100%">
+  <img src="images/mouce-banner.jpg" alt="mouce" width="100%">
 </p>
 
-<h1 align="center">Mouce</h1>
+<h1 align="center">mouce</h1>
 
 <p align="center">
   <strong>A tiny desktop companion that helps you understand what's on your screen, without ever touching your files.</strong>
@@ -28,7 +28,7 @@
 
 ## Overview
 
-Mouce is a small, always-on-top companion that sits in a corner of your Windows desktop. It
+mouce is a small, always-on-top companion that sits in a corner of your Windows desktop. It
 never takes keyboard focus from the app you're working in. When you want help, it asks the AI
 you choose: a free local model through [Ollama](https://ollama.com), or an online provider with
 your own API key.
@@ -43,13 +43,13 @@ your own API key.
   Groq, Gemini or Claude. If the online AI fails, it can fall back to the local one.
 - **Guided first run.** Detects whether Ollama is installed and running, and downloads a
   starter model only after you confirm.
-- **Tray controls.** Open Settings, pause or show Mouce, or quit, all from the system tray.
+- **Tray controls.** Open Settings, pause or show mouce, or quit, all from the system tray.
 - **Adjustable.** Small, medium or large size, sway on or off, and an optional start with
   Windows.
 
 ## The safety promise
 
-Mouce can look but never touch. It can never open, change, delete or run anything on your
+mouce can look but never touch. It can never open, change, delete or run anything on your
 computer.
 
 | Guarantee | How it's enforced |
@@ -130,7 +130,7 @@ mouce/
 
 - [x] **Skeleton and safety:** companion window, tray, settings, AI provider layer, secure key
       storage, capability lockdown, safety scan, first run
-- [ ] **Chat:** a panel next to Mouce with streaming answers and "Look at my screen"
+- [ ] **Chat:** a panel next to mouce with streaming answers and "Look at my screen"
 - [ ] **Circle to look up:** draw around anything on screen and ask about it
 - [ ] **Dictionary:** Ctrl + right-click a word for its meaning, with an offline fallback
 - [ ] **Calendar and reminders:** add events in plain language, confirm before saving, and get
