@@ -139,7 +139,7 @@ describe("StarWindow", () => {
 
   it("is exposed as a button", async () => {
     await mount();
-    expect(screen.getByRole("button", { name: /star/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /mouce/i })).toBeInTheDocument();
   });
 
   it("attaches a catch handler to each listen() promise immediately", async () => {
