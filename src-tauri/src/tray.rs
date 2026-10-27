@@ -41,13 +41,52 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// What the "pause" menu entry does next, given whether the star is on screen now.
+#[derive(Debug, PartialEq, Eq)]
+struct Toggle {
+    /// True: bring the star back; false: hide it.
+    show: bool,
+    /// The menu text after the toggle.
+    label: &'static str,
+}
+
+fn toggle_for(visible_now: bool) -> Toggle {
+    if visible_now {
+        Toggle { show: false, label: SHOW_LABEL }
+    } else {
+        Toggle { show: true, label: PAUSE_LABEL }
+    }
+}
+
 fn toggle_star(app: &AppHandle, pause_item: &MenuItem<tauri::Wry>) {
     let Some(window) = app.get_webview_window(star::STAR_LABEL) else { return };
-    if window.is_visible().unwrap_or(true) {
-        let _ = window.hide();
-        let _ = pause_item.set_text(SHOW_LABEL);
+    // `is_visible` asks Windows itself (IsWindowVisible), so it stays correct even though
+    // the star is shown and hidden with raw Win32 calls (see `star::show_without_focus`).
+    let next = toggle_for(window.is_visible().unwrap_or(true));
+    let result = if next.show {
+        star::show_without_focus(&window)
     } else {
-        let _ = window.show();
-        let _ = pause_item.set_text(PAUSE_LABEL);
+        star::hide(&window)
+    };
+    match result {
+        Ok(()) => {
+            let _ = pause_item.set_text(next.label);
+        }
+        Err(e) => eprintln!("could not toggle the star: {e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_visible_star_is_hidden_and_the_menu_offers_to_show_it() {
+        assert_eq!(toggle_for(true), Toggle { show: false, label: "Show star" });
+    }
+
+    #[test]
+    fn a_hidden_star_is_shown_and_the_menu_offers_to_pause_it() {
+        assert_eq!(toggle_for(false), Toggle { show: true, label: "Pause star" });
     }
 }

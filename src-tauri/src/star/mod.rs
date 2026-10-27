@@ -13,7 +13,8 @@ use tauri::{
     WebviewWindowBuilder, WindowEvent,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    GetWindowLongPtrW, SetWindowLongPtrW, ShowWindow, GWL_EXSTYLE, SW_HIDE, SW_SHOWNOACTIVATE,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
 pub const STAR_LABEL: &str = "star";
@@ -74,6 +75,34 @@ fn apply_no_focus_styles(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Shows the star without activating it, so it never takes keyboard focus from the user.
+///
+/// `window.show()` is not usable here: tao drops its "do not focus" marker once a window is
+/// built, so a later `show()` calls `ShowWindow(SW_SHOW)`, which activates the window.
+/// `SW_SHOWNOACTIVATE` shows it and leaves the foreground window alone. tao's own "visible"
+/// flag is not touched (it stays as built), so the star is always shown and hidden through
+/// this function and `hide`, never through `window.show()` / `window.hide()`. Visibility
+/// queries (`is_visible`) ask Windows directly and stay correct.
+pub fn show_without_focus(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    let hwnd = window.hwnd()?;
+    // SAFETY: `hwnd` is the live handle of a window owned by this process. The return value
+    // is the previous visibility, not an error.
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+    }
+    Ok(())
+}
+
+/// Hides the star. Pairs with `show_without_focus` (see there for why not `window.hide()`).
+pub fn hide(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    let hwnd = window.hwnd()?;
+    // SAFETY: as in `show_without_focus`.
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_HIDE);
+    }
+    Ok(())
+}
+
 /// Debounced persistence of the star position after the user drags it.
 fn watch_moves(app: &AppHandle, window: &tauri::WebviewWindow) {
     let generation = Arc::new(AtomicU64::new(0));
@@ -126,7 +155,7 @@ pub fn create(app: &AppHandle, settings: &Settings) -> tauri::Result<()> {
     window.set_position(PhysicalPosition::new(x, y))?;
     apply_no_focus_styles(&window)?;
     watch_moves(app, &window);
-    window.show()?;
+    show_without_focus(&window)?;
     Ok(())
 }
 
