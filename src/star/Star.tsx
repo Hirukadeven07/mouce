@@ -61,16 +61,19 @@ export function StarWindow() {
 
   useEffect(() => {
     let alive = true;
-    const unlisteners: Array<Promise<() => void>> = [
+    // Attach a catch to each listen() promise right away so a failed
+    // registration is never an unhandled rejection; cleanup still unlistens
+    // whatever did register.
+    const unlisteners: Array<Promise<(() => void) | null>> = [
       onStarState((s) => alive && setState(s)),
       onSettingsChanged((s) => alive && setSettings(s)),
-    ];
+    ].map((p) => p.catch(() => null));
     getSettings()
       .then((s) => alive && setSettings((cur) => cur ?? s))
       .catch(() => {});
     return () => {
       alive = false;
-      unlisteners.forEach((p) => p.then((un) => un()).catch(() => {}));
+      unlisteners.forEach((p) => p.then((un) => un?.()).catch(() => {}));
     };
   }, []);
 
@@ -80,13 +83,26 @@ export function StarWindow() {
   return (
     <div
       className="star-window"
+      role="button"
+      aria-label="Star — click to open settings"
+      onContextMenu={(e) => e.preventDefault()}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         press.current = { x: e.clientX, y: e.clientY, dragging: false };
+        try {
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+        } catch {
+          // Capture is best effort (missing in jsdom, or the pointer is gone).
+        }
       }}
       onPointerMove={(e) => {
         const p = press.current;
         if (!p || p.dragging) return;
+        if ((e.buttons & 1) === 0) {
+          // The button was released somewhere we did not see.
+          press.current = null;
+          return;
+        }
         if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > DRAG_THRESHOLD_PX) {
           p.dragging = true;
           startDragging().catch(() => {});
@@ -96,6 +112,12 @@ export function StarWindow() {
         const p = press.current;
         press.current = null;
         if (p && !p.dragging) starClicked().catch(() => {});
+      }}
+      onPointerCancel={() => {
+        press.current = null;
+      }}
+      onLostPointerCapture={() => {
+        press.current = null;
       }}
     >
       <Star state={state} rotate={rotate} sizePx={sizePx} />

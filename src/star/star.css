@@ -33,7 +33,8 @@ html.star-window-page body {
 }
 
 .star--reminder {
-  filter: drop-shadow(0 0 4px rgba(245, 197, 66, 0.9)) drop-shadow(0 0 8px rgba(245, 197, 66, 0.6));
+  /* The window leaves ~6px per side; keep the glow within 5px. */
+  filter: drop-shadow(0 0 3px rgba(245, 197, 66, 0.9)) drop-shadow(0 0 1.5px rgba(245, 197, 66, 0.7));
 }
 
 .star--still {

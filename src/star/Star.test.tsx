@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Settings, StarState } from "../lib/types";
 
@@ -84,8 +84,8 @@ describe("StarWindow", () => {
     const { container } = await mount();
     const root = container.firstElementChild as HTMLElement;
     fireEvent.pointerDown(root, { clientX: 20, clientY: 20, button: 0 });
-    fireEvent.pointerMove(root, { clientX: 30, clientY: 20 });
-    fireEvent.pointerMove(root, { clientX: 40, clientY: 25 });
+    fireEvent.pointerMove(root, { clientX: 30, clientY: 20, buttons: 1 });
+    fireEvent.pointerMove(root, { clientX: 40, clientY: 25, buttons: 1 });
     fireEvent.pointerUp(root, { clientX: 40, clientY: 25, button: 0 });
     expect(ipc.startDragging).toHaveBeenCalledTimes(1);
     expect(ipc.starClicked).not.toHaveBeenCalled();
@@ -95,10 +95,61 @@ describe("StarWindow", () => {
     const { container } = await mount();
     const root = container.firstElementChild as HTMLElement;
     fireEvent.pointerDown(root, { clientX: 20, clientY: 20, button: 0 });
-    fireEvent.pointerMove(root, { clientX: 22, clientY: 21 });
+    fireEvent.pointerMove(root, { clientX: 22, clientY: 21, buttons: 1 });
     fireEvent.pointerUp(root, { clientX: 22, clientY: 21, button: 0 });
     expect(ipc.startDragging).not.toHaveBeenCalled();
     expect(ipc.starClicked).toHaveBeenCalledTimes(1);
+  });
+
+  it("hover movement with no button held never starts dragging", async () => {
+    const { container } = await mount();
+    const root = container.firstElementChild as HTMLElement;
+    fireEvent.pointerDown(root, { clientX: 20, clientY: 20, button: 0, buttons: 1 });
+    fireEvent.pointerMove(root, { clientX: 30, clientY: 20, buttons: 0 });
+    expect(ipc.startDragging).not.toHaveBeenCalled();
+    // The press was cleared, so a later release is not a click either.
+    fireEvent.pointerUp(root, { clientX: 30, clientY: 20, button: 0 });
+    expect(ipc.starClicked).not.toHaveBeenCalled();
+  });
+
+  it("pointercancel clears the press", async () => {
+    const { container } = await mount();
+    const root = container.firstElementChild as HTMLElement;
+    fireEvent.pointerDown(root, { clientX: 20, clientY: 20, button: 0, buttons: 1 });
+    fireEvent.pointerCancel(root);
+    fireEvent.pointerMove(root, { clientX: 30, clientY: 20, buttons: 1 });
+    expect(ipc.startDragging).not.toHaveBeenCalled();
+  });
+
+  it("lost pointer capture clears the press", async () => {
+    const { container } = await mount();
+    const root = container.firstElementChild as HTMLElement;
+    fireEvent.pointerDown(root, { clientX: 20, clientY: 20, button: 0, buttons: 1 });
+    fireEvent.lostPointerCapture(root);
+    fireEvent.pointerMove(root, { clientX: 30, clientY: 20, buttons: 1 });
+    expect(ipc.startDragging).not.toHaveBeenCalled();
+  });
+
+  it("suppresses the native context menu", async () => {
+    const { container } = await mount();
+    const root = container.firstElementChild as HTMLElement;
+    // fireEvent returns false when the event was default-prevented.
+    expect(fireEvent.contextMenu(root)).toBe(false);
+  });
+
+  it("is exposed as a button", async () => {
+    await mount();
+    expect(screen.getByRole("button", { name: /star/i })).toBeInTheDocument();
+  });
+
+  it("attaches a catch handler to each listen() promise immediately", async () => {
+    const rejected = Promise.reject(new Error("no events"));
+    const catchSpy = vi.spyOn(rejected, "catch");
+    vi.mocked(ipc.onStarState).mockImplementation(() => rejected);
+    const { unmount } = render(<StarWindow />);
+    expect(catchSpy).toHaveBeenCalled();
+    await waitFor(() => expect(ipc.getSettings).toHaveBeenCalled());
+    unmount();
   });
 
   it("star-state event updates the class", async () => {
