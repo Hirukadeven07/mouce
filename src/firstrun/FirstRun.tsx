@@ -1,32 +1,16 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import {
-  finishFirstRun,
-  onPullProgress,
-  ollamaStatus,
-  openOllamaDownload,
-  pullOllamaModel,
-  setAutostart,
-} from "../lib/ipc";
-import type { OllamaStatus, PullProgress } from "../lib/types";
+import { finishFirstRun, ollamaStatus, openOllamaDownload, setAutostart } from "../lib/ipc";
+import type { OllamaStatus } from "../lib/types";
 import { AiSettings, DEFAULT_LOCAL_MODEL } from "../settings/AiSettings";
+import { PullStatus } from "../settings/PullProgress";
+import { usePull } from "../settings/usePull";
 import { errorText } from "../settings/useSettings";
-
-type Pull =
-  | { phase: "idle" }
-  | { phase: "running"; progress: PullProgress | null }
-  | { phase: "done" }
-  | { phase: "error"; message: string };
-
-function percent(p: PullProgress | null): number | null {
-  if (!p || p.total === null || p.total <= 0 || p.completed === null) return null;
-  return Math.max(0, Math.min(100, Math.round((p.completed / p.total) * 100)));
-}
 
 function ChooseAi(props: { onNext: () => void }) {
   const [status, setStatus] = useState<OllamaStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [online, setOnline] = useState(false);
-  const [pull, setPull] = useState<Pull>({ phase: "idle" });
+  const { pull, pulling, start: startPull } = usePull();
   const [openError, setOpenError] = useState<string | null>(null);
   const request = useRef(0);
   const mounted = useRef(true);
@@ -51,26 +35,13 @@ function ChooseAi(props: { onNext: () => void }) {
   useEffect(() => {
     mounted.current = true;
     void check(false);
-    const unlisten = onPullProgress((progress) => {
-      if (!mounted.current) return;
-      setPull((cur) => (cur.phase === "running" ? { phase: "running", progress } : cur));
-    }).catch(() => null);
     return () => {
       mounted.current = false;
-      unlisten.then((un) => un?.()).catch(() => {});
     };
   }, [check]);
 
   async function download() {
-    setPull({ phase: "running", progress: null });
-    try {
-      await pullOllamaModel(DEFAULT_LOCAL_MODEL);
-      if (!mounted.current) return;
-      setPull({ phase: "done" });
-      void check(true);
-    } catch (e) {
-      if (mounted.current) setPull({ phase: "error", message: errorText(e) });
-    }
+    if (await startPull(DEFAULT_LOCAL_MODEL)) void check(true);
   }
 
   async function getOllama() {
@@ -82,8 +53,6 @@ function ChooseAi(props: { onNext: () => void }) {
     }
   }
 
-  const pct = pull.phase === "running" ? percent(pull.progress) : null;
-  const pulling = pull.phase === "running";
   const hasModel = status?.state === "running" && status.models.includes(DEFAULT_LOCAL_MODEL);
   // A finished download counts even if the follow-up status check could not run.
   const ready = pull.phase === "done" || hasModel;
@@ -117,6 +86,7 @@ function ChooseAi(props: { onNext: () => void }) {
             <button type="button" onClick={() => void getOllama()}>
               Get Ollama (free, runs on this laptop)
             </button>
+            <button type="button" onClick={() => void check(false)}>Check again</button>
             {onlineButton}
           </div>
           {openError && <p role="alert" className="error">{openError}</p>}
@@ -145,18 +115,7 @@ function ChooseAi(props: { onNext: () => void }) {
             </button>
             {onlineButton}
           </div>
-          {pull.phase === "running" && (
-            <div className="progress">
-              <progress
-                aria-label="Download progress"
-                max={100}
-                value={pct === null ? undefined : pct}
-              />
-              {pct !== null && <span>{pct}%</span>}
-              {pull.progress?.status && <span className="muted">{pull.progress.status}</span>}
-            </div>
-          )}
-          {pull.phase === "error" && <p role="alert" className="error">{pull.message}</p>}
+          <PullStatus pull={pull} />
         </>
       )}
 

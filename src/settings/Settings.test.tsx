@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Settings } from "../lib/types";
+import type { PullProgress, Settings } from "../lib/types";
 
 vi.mock("../lib/ipc");
 
@@ -20,6 +20,8 @@ const baseSettings: Settings = {
   fallback_to_local: true,
   first_run_done: true,
 };
+
+let progressCb: ((p: PullProgress) => void) | undefined;
 
 async function renderSettings() {
   render(<SettingsScreen />);
@@ -42,6 +44,11 @@ describe("Settings", () => {
     vi.mocked(ipc.clearApiKey).mockResolvedValue(undefined);
     vi.mocked(ipc.ollamaStatus).mockResolvedValue({ state: "running", models: [] });
     vi.mocked(ipc.openOllamaDownload).mockResolvedValue(undefined);
+    progressCb = undefined;
+    vi.mocked(ipc.onPullProgress).mockImplementation(async (cb) => {
+      progressCb = cb;
+      return () => {};
+    });
   });
 
   it("lists five providers", async () => {
@@ -252,5 +259,75 @@ describe("Settings", () => {
     await renderSettings();
     await screen.findByRole("option", { name: "gemma3:4b" });
     expect(screen.queryByText(/not downloaded/)).not.toBeInTheDocument();
+  });
+  describe("downloading a local model", () => {
+    const downloadName = "Download gemma3:4b";
+
+    it("offers the download only for a not-downloaded Ollama model", async () => {
+      vi.mocked(ipc.listModels).mockResolvedValue(["llama3"]);
+      await renderSettings();
+      expect(await screen.findByRole("button", { name: downloadName })).toBeEnabled();
+    });
+
+    it("does not offer it when the model is installed", async () => {
+      vi.mocked(ipc.listModels).mockResolvedValue(["gemma3:4b"]);
+      await renderSettings();
+      await screen.findByRole("option", { name: "gemma3:4b" });
+      expect(screen.queryByRole("button", { name: /^Download/ })).not.toBeInTheDocument();
+    });
+
+    it("does not offer it before the model list is known", async () => {
+      vi.mocked(ipc.listModels).mockRejectedValue("Ollama is down");
+      await renderSettings();
+      await screen.findByText("Ollama is down");
+      expect(screen.queryByRole("button", { name: /^Download/ })).not.toBeInTheDocument();
+    });
+
+    it("does not offer it for an online provider", async () => {
+      vi.mocked(ipc.getSettings).mockResolvedValue({ ...baseSettings, provider: "openai" });
+      vi.mocked(ipc.hasApiKey).mockResolvedValue(true);
+      vi.mocked(ipc.listModels).mockResolvedValue(["gpt-4o"]);
+      await renderSettings();
+      await screen.findByRole("option", { name: "gpt-4o" });
+      expect(screen.queryByRole("button", { name: /^Download/ })).not.toBeInTheDocument();
+    });
+
+    it("disables the button while pulling, shows progress, then reloads the models", async () => {
+      const user = userEvent.setup();
+      vi.mocked(ipc.listModels).mockResolvedValueOnce([]);
+      let finish: () => void = () => {};
+      vi.mocked(ipc.pullOllamaModel).mockImplementation(
+        () => new Promise<void>((resolve) => (finish = resolve)),
+      );
+      await renderSettings();
+      const button = await screen.findByRole("button", { name: downloadName });
+      await user.click(button);
+      expect(ipc.pullOllamaModel).toHaveBeenCalledWith("gemma3:4b");
+      expect(button).toBeDisabled();
+
+      await waitFor(() => expect(progressCb).toBeDefined());
+      act(() => progressCb?.({ status: "pulling", completed: 25, total: 100 }));
+      expect(screen.getByText("25%")).toBeInTheDocument();
+      act(() => progressCb?.({ status: "verifying", completed: null, total: null }));
+      expect(screen.getByText("verifying")).toBeInTheDocument();
+      expect(screen.queryByText("25%")).not.toBeInTheDocument();
+
+      const before = vi.mocked(ipc.listModels).mock.calls.length;
+      vi.mocked(ipc.listModels).mockResolvedValue(["gemma3:4b"]);
+      await act(async () => finish());
+      await waitFor(() => expect(vi.mocked(ipc.listModels).mock.calls.length).toBeGreaterThan(before));
+      await screen.findByRole("option", { name: "gemma3:4b" });
+      expect(screen.queryByText(/not downloaded/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Download/ })).not.toBeInTheDocument();
+    });
+
+    it("shows a download error verbatim and lets you retry", async () => {
+      const user = userEvent.setup();
+      vi.mocked(ipc.pullOllamaModel).mockRejectedValue("A download is already in progress");
+      await renderSettings();
+      await user.click(await screen.findByRole("button", { name: downloadName }));
+      expect(await screen.findByText("A download is already in progress")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: downloadName })).toBeEnabled();
+    });
   });
 });

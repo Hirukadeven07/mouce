@@ -9,6 +9,8 @@ import {
   testProvider,
 } from "../lib/ipc";
 import type { ProviderId } from "../lib/types";
+import { PullStatus } from "./PullProgress";
+import { usePull } from "./usePull";
 import { errorText, useSettings } from "./useSettings";
 
 export const DEFAULT_LOCAL_MODEL = "gemma3:4b";
@@ -56,6 +58,7 @@ async function explain(provider: ProviderId, err: unknown): Promise<Problem> {
 // and the first-run screen (`compact` drops the extra options).
 export function AiSettings(props: { compact?: boolean }) {
   const { settings, error: settingsError, save } = useSettings();
+  const { pull, pulling, start: startPull } = usePull();
   const provider = settings?.provider;
   const ids = {
     provider: useId(),
@@ -142,6 +145,8 @@ export function AiSettings(props: { compact?: boolean }) {
   const savedModel = settings.models[provider] ?? (provider === "ollama" ? DEFAULT_LOCAL_MODEL : "");
   // Only for Ollama, and only once the installed list is known.
   const notDownloaded = provider === "ollama" && modelsLoaded && !models.includes(savedModel);
+  // The first-run screen has its own download step, so the compact form leaves it out.
+  const showDownload = !props.compact && notDownloaded && savedModel !== "";
   const modelOptions = savedModel && !models.includes(savedModel) ? [savedModel, ...models] : models;
   const optionLabel = (m: string) => (m === savedModel && notDownloaded ? `${m} (not downloaded)` : m);
 
@@ -195,6 +200,11 @@ export function AiSettings(props: { compact?: boolean }) {
       const problem = await explain(p, err);
       if (current.current === p) setTest({ kind: "error", problem });
     }
+  }
+
+  async function onDownload() {
+    const p = provider as ProviderId;
+    if ((await startPull(savedModel)) && current.current === p) void loadModels(p);
   }
 
   async function onGetOllama() {
@@ -289,6 +299,14 @@ export function AiSettings(props: { compact?: boolean }) {
           </button>
         </div>
         {modelsError && renderProblem(modelsError)}
+        {showDownload && (
+          <div className="row">
+            <button type="button" disabled={pulling} onClick={() => void onDownload()}>
+              Download {savedModel}
+            </button>
+          </div>
+        )}
+        {(showDownload || pulling) && <PullStatus pull={pull} />}
       </div>
 
       <div className="field">

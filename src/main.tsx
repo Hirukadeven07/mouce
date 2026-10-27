@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { blockContextMenu } from "./lib/blockContextMenu";
 import { windowLabel } from "./lib/ipc";
 
 async function root(): Promise<React.ReactElement> {
@@ -32,6 +33,8 @@ function render(element: React.ReactElement) {
     <React.StrictMode>{element}</React.StrictMode>,
   );
 }
+
+blockContextMenu(document);
 
 root()
   .then(render)

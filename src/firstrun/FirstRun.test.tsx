@@ -62,6 +62,22 @@ describe("FirstRun", () => {
     expect(ipc.openOllamaDownload).toHaveBeenCalledTimes(1);
   });
 
+  it("not installed can check again after Ollama is installed", async () => {
+    const user = userEvent.setup();
+    setStatus({ state: "notInstalled" });
+    render(<FirstRun />);
+    await toStepTwo(user);
+
+    const check = await screen.findByRole("button", { name: "Check again" });
+    expect(screen.getByRole("button", { name: "Get Ollama (free, runs on this laptop)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use an online AI" })).toBeInTheDocument();
+
+    setStatus({ state: "running", models: [] });
+    await user.click(check);
+    expect(await screen.findByRole("button", { name: "Download gemma3:4b (about 3 GB)" })).toBeEnabled();
+    expect(ipc.ollamaStatus).toHaveBeenCalledTimes(2);
+  });
+
   it("not running asks to start it and can check again", async () => {
     const user = userEvent.setup();
     setStatus({ state: "notRunning" });
