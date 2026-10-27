@@ -10,10 +10,18 @@ async function root(): Promise<React.ReactElement> {
       const { StarWindow } = await import("./star/Star");
       return <StarWindow />;
     }
-    case "settings":
-      return <div>Settings</div>;
-    case "firstrun":
-      return <div>Welcome to Star</div>;
+    case "settings": {
+      document.documentElement.classList.add("page-window");
+      await import("./settings/settings.css");
+      const { Settings } = await import("./settings/Settings");
+      return <Settings />;
+    }
+    case "firstrun": {
+      document.documentElement.classList.add("page-window");
+      await import("./settings/settings.css");
+      const { FirstRun } = await import("./firstrun/FirstRun");
+      return <FirstRun />;
+    }
     default:
       return <div>Star</div>;
   }
