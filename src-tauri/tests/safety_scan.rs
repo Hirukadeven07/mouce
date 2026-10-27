@@ -60,8 +60,9 @@ fn scan(files: &[PathBuf], patterns: &[&str], root: &Path) -> Vec<String> {
             if line.contains(EXEMPT_MARKER) {
                 continue;
             }
+            let lower = line.to_lowercase();
             for pat in patterns {
-                if line.contains(pat) {
+                if lower.contains(&pat.to_lowercase()) {
                     let rel = file.strip_prefix(root).unwrap_or(file);
                     hits.push(format!(
                         "{}:{}: contains `{}`",
@@ -84,8 +85,17 @@ fn no_forbidden_apis_outside_store() {
 
     let mut all = Vec::new();
     rust_files(&src, &mut all);
+    assert!(!all.is_empty(), "scan found no Rust source files");
     let (in_store, outside): (Vec<_>, Vec<_>) =
         all.into_iter().partition(|p| p.starts_with(&store));
+    assert!(
+        outside.contains(&src.join("lib.rs")),
+        "scan did not cover src/lib.rs"
+    );
+    assert!(
+        !in_store.is_empty(),
+        "scan did not cover any file under src/store/"
+    );
 
     let mut failures = scan(&outside, FORBIDDEN_EVERYWHERE, &root);
     failures.extend(scan(&in_store, FORBIDDEN_IN_STORE, &root));
@@ -142,20 +152,44 @@ fn no_forbidden_dependencies() {
     );
 }
 
+fn capability_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = fs::read_dir(dir).expect("read capabilities dir");
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            capability_files(&path, out);
+        } else if path
+            .extension()
+            .is_some_and(|e| e == "json" || e == "json5" || e == "toml")
+        {
+            out.push(path);
+        }
+    }
+}
+
 #[test]
 fn capabilities_grant_only_allowlist() {
     let dir = manifest_dir().join("capabilities");
-    let mut granted = std::collections::BTreeSet::new();
-    let mut seen_files = 0;
+    let mut files = Vec::new();
+    capability_files(&dir, &mut files);
+    assert!(!files.is_empty(), "no capability files found");
 
-    for entry in fs::read_dir(&dir).expect("read capabilities dir").flatten() {
-        let path = entry.path();
-        if path.extension().is_none_or(|e| e != "json") {
-            continue;
-        }
-        seen_files += 1;
-        let text = fs::read_to_string(&path).expect("read capability file");
+    let mut granted = std::collections::BTreeSet::new();
+    let expected_windows = serde_json::json!(["star", "settings", "firstrun"]);
+
+    for path in &files {
+        let name = path.display();
+        assert!(
+            path.extension().is_some_and(|e| e == "json"),
+            "{name}: only plain .json capability files are supported; .json5/.toml are not allowed"
+        );
+        let text = fs::read_to_string(path).expect("read capability file");
         let value: serde_json::Value = serde_json::from_str(&text).expect("parse capability json");
+        assert_eq!(
+            value.get("windows"),
+            Some(&expected_windows),
+            "{name}: capability windows must be exactly star, settings, firstrun"
+        );
         let perms = value
             .get("permissions")
             .and_then(|p| p.as_array())
@@ -174,11 +208,26 @@ fn capabilities_grant_only_allowlist() {
         }
     }
 
-    assert!(seen_files > 0, "no capability files found");
     let expected: std::collections::BTreeSet<String> =
         ["core:default", "core:window:allow-start-dragging"]
             .iter()
             .map(|s| s.to_string())
             .collect();
     assert_eq!(granted, expected, "capabilities must grant exactly the allowlist");
+}
+
+#[test]
+fn tauri_conf_has_no_inline_capabilities() {
+    let text = fs::read_to_string(manifest_dir().join("tauri.conf.json"))
+        .expect("read tauri.conf.json");
+    let conf: serde_json::Value = serde_json::from_str(&text).expect("parse tauri.conf.json");
+    let inline = conf.pointer("/app/security/capabilities");
+    let empty = match inline {
+        None => true,
+        Some(v) => v.as_array().is_some_and(|a| a.is_empty()),
+    };
+    assert!(
+        empty,
+        "tauri.conf.json must not define inline app.security.capabilities: {inline:?}"
+    );
 }
