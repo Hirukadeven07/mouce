@@ -1,0 +1,75 @@
+/* The first-run welcome window: one step at a time, with the button that moves on always in
+   the same place at the bottom. Tokens and controls come from app.css. */
+
+.firstrun-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 460px;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 40px 28px 0;
+}
+
+.firstrun-logo {
+  margin-bottom: 4px;
+}
+
+.firstrun-body > p {
+  color: var(--label-2);
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.firstrun-online {
+  margin-top: 4px;
+}
+
+.firstrun-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: auto -28px 0;
+  padding: 16px 28px 20px;
+  background: linear-gradient(transparent, var(--bg) 35%);
+}
+
+.firstrun-footer .button-row {
+  justify-content: flex-end;
+}
+
+.firstrun-footer button.primary {
+  min-width: 88px;
+  min-height: 32px;
+}
+
+.steps {
+  display: flex;
+  gap: 6px;
+}
+
+.step {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--label-3);
+  opacity: 0.35;
+  transition:
+    width var(--spring-time) var(--spring),
+    opacity 0.2s ease-out;
+}
+
+.step--on {
+  width: 20px;
+  background: var(--accent-text);
+  opacity: 1;
+}
+
+@media (prefers-reduced-transparency: no-preference) {
+  html[data-glass="on"] .firstrun-footer {
+    background: none;
+  }
+}

@@ -8,6 +8,8 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tauri::utils::config::WindowEffectsConfig;
+use tauri::window::{Effect, EffectsBuilder};
 use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, Monitor, PhysicalPosition, PhysicalSize, WebviewUrl,
     WebviewWindowBuilder, WindowEvent,
@@ -276,7 +278,11 @@ fn open_window(
                 .inner_size(size.0, size.1)
                 .min_inner_size(size.0 * 0.8, size.1 * 0.8)
                 .decorations(true)
+                .transparent(true)
                 .center();
+        if let Some(effects) = glass_effects(glass_on(app)) {
+            builder = builder.effects(effects);
+        }
         if let Some(script) = init_script {
             builder = builder.initialization_script(&script);
         }
@@ -287,6 +293,28 @@ fn open_window(
 fn log_failure<E: std::fmt::Display>(what: &str, result: Result<(), E>) {
     if let Err(e) = result {
         eprintln!("could not {what}: {e}");
+    }
+}
+
+/// The page windows are transparent so that, with Liquid Glass on, the page can let the
+/// Mica material show through. With it off the page paints itself opaque and needs none.
+fn glass_effects(on: bool) -> Option<WindowEffectsConfig> {
+    on.then(|| EffectsBuilder::new().effect(Effect::Mica).build())
+}
+
+fn glass_on(app: &AppHandle) -> bool {
+    app.try_state::<crate::AppState>()
+        .map(|state| state.settings.lock().unwrap_or_else(|e| e.into_inner()).liquid_glass)
+        .unwrap_or(true)
+}
+
+/// Gives the open page windows the material for the Liquid Glass setting. A window that keeps
+/// its old material still works, so failures are only logged.
+pub fn set_glass(app: &AppHandle, on: bool) {
+    for label in [HOME_LABEL, FIRSTRUN_LABEL, CHAT_LABEL] {
+        if let Some(window) = app.get_webview_window(label) {
+            log_failure("change the window material", window.set_effects(glass_effects(on)));
+        }
     }
 }
 
@@ -306,14 +334,19 @@ fn chat_position(
 }
 
 fn build_chat(app: &AppHandle) -> tauri::Result<()> {
-    let window = WebviewWindowBuilder::new(app, CHAT_LABEL, WebviewUrl::App("index.html".into()))
-        .title("Chat with mouce")
-        .inner_size(CHAT_SIZE.0, CHAT_SIZE.1)
-        .min_inner_size(300.0, 360.0)
-        .always_on_top(true)
-        .center()
-        .visible(false)
-        .build()?;
+    let mut builder =
+        WebviewWindowBuilder::new(app, CHAT_LABEL, WebviewUrl::App("index.html".into()))
+            .title("Chat with mouce")
+            .inner_size(CHAT_SIZE.0, CHAT_SIZE.1)
+            .min_inner_size(300.0, 360.0)
+            .always_on_top(true)
+            .transparent(true)
+            .center()
+            .visible(false);
+    if let Some(effects) = glass_effects(glass_on(app)) {
+        builder = builder.effects(effects);
+    }
+    let window = builder.build()?;
     if let Some((x, y)) = chat_position(app, &window)? {
         window.set_position(PhysicalPosition::new(x, y))?;
     }

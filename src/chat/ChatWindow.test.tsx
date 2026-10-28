@@ -20,6 +20,7 @@ const baseSettings: Settings = {
   history_enabled: false,
   fallback_to_local: true,
   first_run_done: true,
+  liquid_glass: true,
 };
 
 const done = (text: string, extra: Partial<ChatReply> = {}): ChatReply => ({
@@ -179,7 +180,8 @@ describe("ChatWindow", () => {
     await userEvent.click(screen.getByRole("button", { name: "New chat" }));
     expect(ipc.chatClear).toHaveBeenCalled();
     expect(screen.queryByText("Hello!")).not.toBeInTheDocument();
-    expect(screen.getByText("Ask me anything, or let me look at your screen.")).toBeInTheDocument();
+    expect(screen.getByText("Ask me anything")).toBeInTheDocument();
+    expect(screen.getByText("Or let me look at your screen.")).toBeInTheDocument();
   });
 
   it("follows settings changes made in another window", async () => {

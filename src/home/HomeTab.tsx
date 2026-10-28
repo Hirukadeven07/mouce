@@ -55,7 +55,9 @@ export function HomeTab(props: {
       <div className="home-grid">
         <section className="card" aria-labelledby="month-card-title">
           <div className="card-head">
-            <h2 id="month-card-title">{monthTitle(year, month)}</h2>
+            <h2 id="month-card-title" className="headline">
+              {monthTitle(year, month)}
+            </h2>
             <button type="button" className="link" onClick={() => onNavigate("calendar")}>
               Open calendar
             </button>
@@ -65,13 +67,17 @@ export function HomeTab(props: {
         <div className="home-stack">
           <section className="card" aria-labelledby="today-card-title">
             <div className="card-head">
-              <h2 id="today-card-title">Today</h2>
+              <h2 id="today-card-title" className="headline">
+                Today
+              </h2>
             </div>
             <p className="empty">Nothing planned today.</p>
           </section>
           <section className="card" aria-labelledby="reminders-card-title">
             <div className="card-head">
-              <h2 id="reminders-card-title">Reminders</h2>
+              <h2 id="reminders-card-title" className="headline">
+                Reminders
+              </h2>
               <button type="button" className="link" onClick={() => onNavigate("reminders")}>
                 See all
               </button>

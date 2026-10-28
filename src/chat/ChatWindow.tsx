@@ -12,6 +12,7 @@ import {
 import type { ChatTurn, Settings } from "../lib/types";
 import { PROVIDERS } from "../settings/AiSettings";
 import { errorText } from "../settings/useSettings";
+import { Icon } from "../ui/Icon";
 
 /** Matches `chat::LOOK_QUESTION` in Rust: the question when only the screen is shared. */
 export const LOOK_QUESTION = "What's on my screen?";
@@ -42,7 +43,12 @@ function Bubble(props: { turn: ChatTurn; note?: string; writing?: boolean }) {
   return (
     <div className={"bubble-row" + (mine ? " bubble-row--mine" : "")}>
       <div className={"bubble" + (mine ? " bubble--mine" : "")}>
-        {turn.looked && <span className="bubble-chip">Shared screen</span>}
+        {turn.looked && (
+          <span className="bubble-chip">
+            <Icon name="look" size={13} />
+            Shared screen
+          </span>
+        )}
         {turn.text && <p className="bubble-text">{turn.text}</p>}
         {writing && (
           <span className="typing" aria-label="mouce is writing">
@@ -67,7 +73,7 @@ export function ChatWindow() {
   const [draft, setDraft] = useState("");
   const [look, setLook] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const logRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mounted = useRef(true);
   const ids = { input: useId(), lookNote: useId() };
@@ -93,8 +99,8 @@ export function ChatWindow() {
   }, []);
 
   useEffect(() => {
-    const log = logRef.current;
-    if (log) log.scrollTop = log.scrollHeight;
+    const scroller = scrollRef.current;
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }, [turns, pending]);
 
   async function ask(text: string, withScreen: boolean) {
@@ -148,33 +154,39 @@ export function ChatWindow() {
   const canSend = !busy && (draft.trim() !== "" || look);
 
   return (
-    <div className="page chat">
+    <div className="chat" ref={scrollRef}>
       <header className="chat-header">
-        <img src={logoUrl} alt="" width={28} height={28} />
-        <div className="chat-title">
-          <h1>mouce</h1>
-          {settings && (
-            <p className="chat-model">
-              {settings.provider === "ollama" ? "Local" : providerName(settings)}
-              {model ? ` · ${model}` : ""}
-            </p>
-          )}
+        <div className="chat-bar glass">
+          <img className="chat-avatar" src={logoUrl} alt="" width={26} height={26} />
+          <div className="chat-title">
+            <h1>mouce</h1>
+            {settings && (
+              <p className="chat-model">
+                {settings.provider === "ollama" ? "Local" : providerName(settings)}
+                {model ? ` · ${model}` : ""}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="New chat"
+            title="New chat"
+            onClick={() => void newChat()}
+            disabled={busy || turns.length === 0}
+          >
+            <Icon name="compose" size={17} />
+          </button>
         </div>
-        <button
-          type="button"
-          className="link"
-          onClick={() => void newChat()}
-          disabled={busy || turns.length === 0}
-        >
-          New chat
-        </button>
       </header>
 
-      <div className="chat-log" ref={logRef} role="log" aria-label="Conversation">
+      <div className="chat-log" role="log" aria-label="Conversation">
         {turns.length === 0 && !pending && (
           <div className="chat-empty">
-            <p>Ask me anything, or let me look at your screen.</p>
-            <button type="button" className="chip" onClick={() => void ask("", true)}>
+            <p className="headline">Ask me anything</p>
+            <p className="muted">Or let me look at your screen.</p>
+            <button type="button" onClick={() => void ask("", true)}>
+              <Icon name="look" size={16} />
               {LOOK_QUESTION}
             </button>
           </div>
@@ -193,12 +205,6 @@ export function ChatWindow() {
         )}
       </div>
 
-      {error && (
-        <p className="chat-error" role="alert">
-          {error}
-        </p>
-      )}
-
       <form
         className="chat-compose"
         onSubmit={(e) => {
@@ -206,48 +212,62 @@ export function ChatWindow() {
           if (canSend) void ask(draft.trim(), look);
         }}
       >
-        <label htmlFor={ids.input} className="visually-hidden">
-          Message
-        </label>
-        <textarea
-          id={ids.input}
-          ref={inputRef}
-          rows={2}
-          value={draft}
-          placeholder={look ? "Ask about your screen (optional)" : "Ask mouce…"}
-          aria-describedby={look ? ids.lookNote : undefined}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              e.currentTarget.form?.requestSubmit();
-            }
-          }}
-        />
-        {look && (
-          <p id={ids.lookNote} className="chat-look-note">
-            {lookNote(settings)}
+        {error && (
+          <p className="notice chat-error" role="alert">
+            {error}
           </p>
         )}
-        <div className="chat-actions">
-          <button
-            type="button"
-            className={"chip" + (look ? " chip--on" : "")}
-            aria-pressed={look}
-            disabled={busy}
-            onClick={() => setLook((l) => !l)}
-          >
-            Look at my screen
-          </button>
-          {busy ? (
-            <button type="button" className="primary" onClick={() => void chatStop().catch(() => {})}>
-              Stop
-            </button>
-          ) : (
-            <button type="submit" className="primary" disabled={!canSend}>
-              Send
-            </button>
+        <div className="compose-box glass">
+          <label htmlFor={ids.input} className="visually-hidden">
+            Message
+          </label>
+          <textarea
+            id={ids.input}
+            ref={inputRef}
+            rows={2}
+            value={draft}
+            placeholder={look ? "Ask about your screen (optional)" : "Ask mouce…"}
+            aria-describedby={look ? ids.lookNote : undefined}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                e.currentTarget.form?.requestSubmit();
+              }
+            }}
+          />
+          {look && (
+            <p id={ids.lookNote} className="chat-look-note">
+              {lookNote(settings)}
+            </p>
           )}
+          <div className="chat-actions">
+            <button
+              type="button"
+              className={"chip" + (look ? " chip--on" : "")}
+              aria-pressed={look}
+              disabled={busy}
+              onClick={() => setLook((l) => !l)}
+            >
+              <Icon name="look" size={16} />
+              Look at my screen
+            </button>
+            {busy ? (
+              <button
+                type="button"
+                className="primary icon-button"
+                aria-label="Stop"
+                title="Stop"
+                onClick={() => void chatStop().catch(() => {})}
+              >
+                <Icon name="stop" size={16} />
+              </button>
+            ) : (
+              <button type="submit" className="primary icon-button" aria-label="Send" title="Send" disabled={!canSend}>
+                <Icon name="send" size={16} />
+              </button>
+            )}
+          </div>
         </div>
       </form>
     </div>

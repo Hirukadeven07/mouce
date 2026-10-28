@@ -121,7 +121,8 @@ pub fn update_settings(
     state: State<'_, AppState>,
     settings: Settings,
 ) -> Result<Settings, String> {
-    let old_hotkey = get_settings_impl(&state).chat_hotkey;
+    let before = get_settings_impl(&state);
+    let old_hotkey = before.chat_hotkey;
     let hotkey_changed = old_hotkey.trim() != settings.chat_hotkey.trim();
     if hotkey_changed {
         hotkey::replace(&app, &old_hotkey, &settings.chat_hotkey)?;
@@ -138,6 +139,9 @@ pub fn update_settings(
         // The settings are already saved; a window that could not resize is not an error.
         let resized = mouce::resize(&app, saved.mouce_size);
         log_best_effort("resize the mouce after saving settings", resized, |m| eprintln!("{m}"));
+    }
+    if saved.liquid_glass != before.liquid_glass {
+        mouce::set_glass(&app, saved.liquid_glass);
     }
     Ok(saved)
 }

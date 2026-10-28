@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import logoUrl from "../assets/mouce.png";
 import { finishFirstRun, ollamaStatus, openOllamaDownload, setAutostart } from "../lib/ipc";
 import type { OllamaStatus } from "../lib/types";
 import { AiSettings, DEFAULT_LOCAL_MODEL } from "../settings/AiSettings";
 import { PullStatus } from "../settings/PullProgress";
 import { usePull } from "../settings/usePull";
 import { errorText } from "../settings/useSettings";
+import { Switch } from "../ui/Switch";
 
 function ChooseAi(props: { onNext: () => void }) {
   const [status, setStatus] = useState<OllamaStatus | null>(null);
@@ -66,13 +68,13 @@ function ChooseAi(props: { onNext: () => void }) {
 
   return (
     <>
-      <h1>Choose your AI</h1>
+      <h1 className="title">Choose your AI</h1>
 
       {status === null && statusError === null && !ready && <p role="status">Checking for Ollama…</p>}
       {statusError && !ready && (
         <>
           <p role="alert" className="error">{statusError}</p>
-          <div className="row">
+          <div className="button-row">
             <button type="button" onClick={() => void check(false)}>Check again</button>
             {onlineButton}
           </div>
@@ -82,7 +84,7 @@ function ChooseAi(props: { onNext: () => void }) {
       {!ready && status?.state === "notInstalled" && (
         <>
           <p>mouce can use a free AI that runs on this laptop, or an online AI with your own key.</p>
-          <div className="row">
+          <div className="button-row">
             <button type="button" onClick={() => void getOllama()}>
               Get Ollama (free, runs on this laptop)
             </button>
@@ -99,7 +101,7 @@ function ChooseAi(props: { onNext: () => void }) {
             Ollama is installed but not running — start it from the Start menu, then press Check
             again
           </p>
-          <div className="row">
+          <div className="button-row">
             <button type="button" onClick={() => void check(false)}>Check again</button>
             {onlineButton}
           </div>
@@ -109,7 +111,7 @@ function ChooseAi(props: { onNext: () => void }) {
       {needsModel && (
         <>
           <p>Ollama is running. mouce needs one model to start with.</p>
-          <div className="row">
+          <div className="button-row">
             <button type="button" disabled={pulling} onClick={() => void download()}>
               Download {DEFAULT_LOCAL_MODEL} (about 3 GB)
             </button>
@@ -122,24 +124,39 @@ function ChooseAi(props: { onNext: () => void }) {
       {ready && (
         <>
           <p role="status">{DEFAULT_LOCAL_MODEL} is ready.</p>
-          <div className="row">{onlineButton}</div>
+          <div className="button-row">{onlineButton}</div>
         </>
       )}
 
       {online && (
-        <section>
+        <section className="firstrun-online">
           <AiSettings compact />
         </section>
       )}
 
-      {(status !== null || statusError !== null) && (
-        <div className="footer">
+      <StepFooter step={2}>
+        {(status !== null || statusError !== null) && (
           <button type="button" className="primary" disabled={pulling} onClick={props.onNext}>
             {needsModel ? "Skip" : "Next"}
           </button>
-        </div>
-      )}
+        )}
+      </StepFooter>
     </>
+  );
+}
+
+/** The step dots and the button that moves on, pinned to the bottom of the window. */
+function StepFooter(props: { step: 1 | 2 | 3; children?: ReactNode }) {
+  return (
+    <footer className="firstrun-footer">
+      <p className="visually-hidden">Step {props.step} of 3</p>
+      <div className="steps" aria-hidden="true">
+        {[1, 2, 3].map((n) => (
+          <span key={n} className={"step" + (n === props.step ? " step--on" : "")} />
+        ))}
+      </div>
+      <div className="button-row">{props.children}</div>
+    </footer>
   );
 }
 
@@ -175,45 +192,53 @@ export function FirstRun() {
   }
 
   return (
-    <main className="page firstrun">
-      {step === 1 && (
-        <>
-          <h1>Hi, I'm mouce.</h1>
-          <p>
-            I live in the corner of your desktop and help you understand what's on your
-            screen. I can never open, change, delete or run anything on your computer.
-          </p>
-          <div className="check">
-            <input
-              id={startupId}
-              type="checkbox"
-              checked={autostart}
-              onChange={(e) => setAutostartChoice(e.target.checked)}
-            />
-            <label htmlFor={startupId}>Start mouce when Windows starts</label>
-          </div>
-          <div className="footer">
-            <button type="button" className="primary" onClick={() => setStep(2)}>
-              Next
-            </button>
-          </div>
-        </>
-      )}
+    <main className="firstrun">
+      <div className="firstrun-body">
+        <img className="firstrun-logo" src={logoUrl} alt="" width={72} height={72} />
+        {step === 1 && (
+          <>
+            <h1 className="large-title">Hi, I'm mouce.</h1>
+            <p>
+              I live in the corner of your desktop and help you understand what's on your
+              screen. I can never open, change, delete or run anything on your computer.
+            </p>
+            <div className="group">
+              <div className="form-row">
+                <div className="form-line">
+                  <label className="form-label" htmlFor={startupId}>
+                    Start mouce when Windows starts
+                  </label>
+                  <Switch
+                    id={startupId}
+                    checked={autostart}
+                    onChange={(e) => setAutostartChoice(e.target.checked)}
+                  />
+                </div>
+              </div>
+            </div>
+            <StepFooter step={1}>
+              <button type="button" className="primary" onClick={() => setStep(2)}>
+                Next
+              </button>
+            </StepFooter>
+          </>
+        )}
 
-      {step === 2 && <ChooseAi onNext={() => setStep(3)} />}
+        {step === 2 && <ChooseAi onNext={() => setStep(3)} />}
 
-      {step === 3 && (
-        <>
-          <h1>All set</h1>
-          <p>Click mouce any time to open its settings.</p>
-          {error && <p role="alert" className="error">{error}</p>}
-          <div className="footer">
-            <button type="button" className="primary" disabled={finishing} onClick={() => void done()}>
-              Done
-            </button>
-          </div>
-        </>
-      )}
+        {step === 3 && (
+          <>
+            <h1 className="large-title">All set</h1>
+            <p>Click mouce any time to chat. Its settings are in the tray menu.</p>
+            {error && <p role="alert" className="error">{error}</p>}
+            <StepFooter step={3}>
+              <button type="button" className="primary" disabled={finishing} onClick={() => void done()}>
+                Done
+              </button>
+            </StepFooter>
+          </>
+        )}
+      </div>
     </main>
   );
 }

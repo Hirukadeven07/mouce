@@ -1,144 +1,223 @@
-/* The home window. Colours follow the logo: navy eyes, silver rim, warm off-white page. */
-:root {
-  --navy: #1f3566;
-  --navy-soft: #e9eef7;
-  --line: #e8e4db;
-  --ok: #2d7a3a;
-  --warn: #a8660a;
-}
+/* The home window: a floating sidebar beside the page, which becomes a tab bar along the top
+   when the window is narrow or the text is zoomed. Colours and controls come from app.css. */
 
 .home {
-  box-sizing: border-box;
-  max-width: 880px;
-  margin: 0 auto;
-  padding: 18px 24px 28px;
+  display: grid;
+  grid-template-columns: 212px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.home-sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: 100vh;
+  padding: 10px 0 10px 10px;
+}
+
+.home-nav {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  padding: 10px 8px;
+  border-radius: 18px;
+}
+
+.nav-group-gap {
+  height: 14px;
+}
+
+html.page-window button.nav-item {
+  position: relative;
+  z-index: 1;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--label);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+html.page-window button.nav-item:hover:not([aria-selected="true"]) {
+  background: var(--fill);
+}
+
+html.page-window button.nav-item:active {
+  transform: none;
+}
+
+html.page-window button.nav-item[aria-selected="true"] {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.nav-item .icon {
+  color: var(--label-2);
+}
+
+.nav-item[aria-selected="true"] .icon {
+  color: var(--accent-text);
+}
+
+/* The selection lens: one shape that glides to the chosen tab on a spring. */
+.nav-lens {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: 9px;
+  background: var(--selection);
+  pointer-events: none;
+  transition:
+    transform var(--spring-time) var(--spring),
+    width var(--spring-time) var(--spring),
+    height var(--spring-time) var(--spring);
+}
+
+.nav-lens--still {
+  transition: none;
+}
+
+@media (prefers-reduced-transparency: no-preference) {
+  html[data-glass="on"] .nav-lens {
+    background: color-mix(in srgb, var(--surface) 70%, transparent);
+    box-shadow:
+      inset 0 1px 0 var(--glass-rim),
+      0 0 0 0.5px var(--glass-edge),
+      0 2px 6px -2px rgba(20, 30, 60, 0.25);
+  }
+}
+
+.home-main {
+  min-width: 0;
+  padding: 22px 28px 32px 24px;
 }
 
 .home-header {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
 }
 
-.home-logo {
-  flex: none;
+.home-header > div {
+  flex: 1;
+  min-width: 0;
 }
 
-.home-header h1 {
-  font-size: 22px;
-  font-weight: 600;
-  margin: 0;
+.home-header .subtitle {
+  margin-top: 2px;
 }
 
-.home-greeting {
-  margin: 0 0 0 6px;
-  color: #6b6b6b;
-  font-size: 14px;
+@media (max-width: 639px) {
+  .home {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+
+  .home-sidebar {
+    height: auto;
+    padding: 10px 12px 6px;
+  }
+
+  .home-nav {
+    flex-direction: row;
+    height: auto;
+    padding: 3px;
+    border-radius: 999px;
+  }
+
+  .nav-group-gap {
+    display: none;
+  }
+
+  html.page-window button.nav-item {
+    flex: 1 1 0;
+    justify-content: center;
+    min-width: 0;
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: 13px;
+  }
+
+  /* A segmented row reads best as text alone. */
+  .nav-item .icon {
+    display: none;
+  }
+
+  .nav-lens {
+    border-radius: 999px;
+  }
+
+  .home-main {
+    padding: 14px 16px 28px;
+  }
+
+  /* Scroll edge: content fades into the bar instead of colliding with it. */
+  .home-sidebar::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 -14px;
+    z-index: -1;
+    background: linear-gradient(var(--bg) 55%, transparent);
+    pointer-events: none;
+  }
 }
 
-.home-tabs {
-  display: flex;
-  gap: 2px;
-  margin-top: 14px;
-  border-bottom: 1px solid var(--line);
+@media (max-width: 639px) and (prefers-reduced-transparency: no-preference) {
+  html[data-glass="on"] .home-sidebar::before {
+    background: none;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    -webkit-mask-image: linear-gradient(#000 50%, transparent);
+    mask-image: linear-gradient(#000 50%, transparent);
+  }
 }
 
-.home-tab {
-  font: inherit;
-  padding: 8px 14px;
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: none;
-  color: #5d5d5d;
-  cursor: pointer;
-}
-
-.home-tab:hover {
-  color: var(--navy);
-}
-
-.home-tab[aria-selected="true"] {
-  color: var(--navy);
-  font-weight: 600;
-  border-bottom-color: var(--navy);
-}
-
-.home-tab:focus-visible {
-  outline: 2px solid var(--navy);
-  outline-offset: -2px;
-  border-radius: 4px;
-}
-
-.home-tab--end {
-  margin-left: auto;
-}
-
-.home-tab-icon {
-  margin-right: 6px;
-}
-
-.home-panel {
-  padding-top: 18px;
-}
+/* ---- cards ---- */
 
 .card {
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px 16px;
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 .card-head {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 28px;
   margin-bottom: 10px;
 }
 
 .card-head h2 {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: #7a7a7a;
-}
-
-.link {
-  margin-left: auto;
-  font: inherit;
-  font-size: 13px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--navy);
-  cursor: pointer;
-}
-
-.link:hover {
-  text-decoration: underline;
-}
-
-.link:focus-visible,
-.ai-change:focus-visible,
-.calendar-nav button:focus-visible {
-  outline: 2px solid var(--navy);
-  outline-offset: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
 .empty {
-  margin: 0;
-  color: #8a8a8a;
-  font-size: 14px;
+  color: var(--label-2);
+  font-size: 13px;
 }
 
-/* ---- AI card ---- */
+/* ---- dashboard ---- */
+
+.home-dash {
+  display: grid;
+  gap: 14px;
+}
 
 .ai-card {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 14px;
+  gap: 10px 14px;
 }
 
 .ai-dot {
@@ -150,32 +229,33 @@
 
 .ai-dot--ok {
   background: var(--ok);
-  box-shadow: 0 0 0 4px #e3f1e5;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 18%, transparent);
 }
 
 .ai-dot--warn {
-  background: #e0a030;
-  box-shadow: 0 0 0 4px #fbefd9;
+  background: var(--warn);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 18%, transparent);
 }
 
 .ai-dot--checking {
-  background: #b9b4aa;
-  box-shadow: 0 0 0 4px #f0eee9;
+  background: var(--label-3);
+  box-shadow: 0 0 0 4px var(--fill);
 }
 
 .ai-text {
+  flex: 1 1 180px;
   min-width: 0;
 }
 
 .ai-model {
-  margin: 0;
   font-size: 17px;
+  line-height: 22px;
   font-weight: 600;
+  letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
 
 .ai-status {
-  margin: 0;
   font-size: 13px;
 }
 
@@ -188,40 +268,22 @@
 }
 
 .ai-status--checking {
-  color: #8a8a8a;
+  color: var(--label-2);
 }
 
 .pill {
   flex: none;
-  background: var(--navy-soft);
-  color: var(--navy);
-  border-radius: 999px;
   padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-tint);
+  color: var(--accent-text);
   font-size: 12px;
+  font-weight: 500;
 }
-
-.ai-change {
-  margin-left: auto;
-  flex: none;
-  font: inherit;
-  font-size: 13px;
-  padding: 5px 12px;
-  border: 1px solid #cfd6e4;
-  border-radius: 6px;
-  background: #fff;
-  color: var(--navy);
-  cursor: pointer;
-}
-
-.ai-change:hover {
-  background: var(--navy-soft);
-}
-
-/* ---- dashboard grid ---- */
 
 .home-grid {
   display: grid;
-  grid-template-columns: 270px 1fr;
+  grid-template-columns: minmax(250px, 300px) minmax(0, 1fr);
   gap: 14px;
   align-items: start;
 }
@@ -231,9 +293,9 @@
   gap: 14px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 760px) {
   .home-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -241,83 +303,81 @@
 
 .month {
   display: grid;
-  gap: 3px;
+  gap: 2px;
   font-size: 12px;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .month-row {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
+  gap: 2px;
 }
 
 .month-head {
-  color: #9a9a9a;
-  font-size: 11px;
   padding-bottom: 4px;
+  color: var(--label-2);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .month-day {
-  padding: 5px 0;
-  border-radius: 6px;
-  font-variant-numeric: tabular-nums;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
 }
 
 .month-day--other {
-  color: #c4c0b8;
+  color: var(--label-3);
 }
 
 .month-day--today {
-  background: var(--navy);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
   font-weight: 600;
 }
 
 .month--large {
-  font-size: 14px;
   margin-bottom: 14px;
+  font-size: 14px;
+}
+
+.month--large .month-head {
+  font-size: 12px;
 }
 
 .month--large .month-day {
-  padding: 12px 0;
+  width: 40px;
+  height: 40px;
 }
 
-/* ---- calendar tab ---- */
+/* ---- calendar ---- */
 
 .calendar-nav {
-  margin-left: auto;
   display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---- empty states ---- */
+
+.empty-state {
+  display: grid;
+  justify-items: center;
   gap: 6px;
+  padding: 36px 24px;
+  text-align: center;
 }
 
-.calendar-nav button {
-  font: inherit;
-  font-size: 13px;
-  min-width: 32px;
-  padding: 4px 10px;
-  border: 1px solid #cfd6e4;
-  border-radius: 6px;
-  background: #fff;
-  color: var(--navy);
-  cursor: pointer;
+.empty-state .icon {
+  margin-bottom: 4px;
+  color: var(--label-3);
 }
 
-.calendar-nav button:hover:not(:disabled) {
-  background: var(--navy-soft);
-}
-
-.calendar-nav button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-/* Settings and Customize reuse the .page form styles inside the panel. */
-.home-panel .page {
-  padding-top: 0;
-}
-
-.home-panel .page section:first-of-type {
-  border-top: none;
-  padding-top: 4px;
+.empty-state p {
+  max-width: 380px;
 }

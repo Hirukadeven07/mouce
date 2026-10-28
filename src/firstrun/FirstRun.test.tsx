@@ -20,6 +20,7 @@ const baseSettings: Settings = {
   history_enabled: false,
   fallback_to_local: true,
   first_run_done: false,
+  liquid_glass: true,
 };
 
 let progressCb: ((p: PullProgress) => void) | undefined;
@@ -178,7 +179,7 @@ describe("FirstRun", () => {
     render(<FirstRun />);
 
     expect(await screen.findByText("Hi, I'm mouce.")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Start mouce when Windows starts" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Start mouce when Windows starts" })).toBeChecked();
     await toStepTwo(user);
     await screen.findByText(/ready/i);
     await user.click(screen.getByRole("button", { name: "Next" }));
@@ -194,7 +195,7 @@ describe("FirstRun", () => {
     const user = userEvent.setup();
     setStatus({ state: "running", models: ["gemma3:4b"] });
     render(<FirstRun />);
-    await user.click(await screen.findByRole("checkbox", { name: "Start mouce when Windows starts" }));
+    await user.click(await screen.findByRole("switch", { name: "Start mouce when Windows starts" }));
     await toStepTwo(user);
     await screen.findByText(/ready/i);
     await user.click(screen.getByRole("button", { name: "Next" }));

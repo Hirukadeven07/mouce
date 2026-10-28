@@ -9,6 +9,7 @@ import {
   testProvider,
 } from "../lib/ipc";
 import type { ProviderId } from "../lib/types";
+import { Switch } from "../ui/Switch";
 import { PullStatus } from "./PullProgress";
 import { usePull } from "./usePull";
 import { errorText, useSettings } from "./useSettings";
@@ -221,7 +222,7 @@ export function AiSettings(props: { compact?: boolean }) {
       <>
         <p role="alert" className="error">{problem.text}</p>
         {problem.getOllama && (
-          <div className="row">
+          <div className="button-row">
             <button type="button" onClick={() => void onGetOllama()}>
               Get Ollama (free, runs on this laptop)
             </button>
@@ -234,103 +235,126 @@ export function AiSettings(props: { compact?: boolean }) {
 
   return (
     <div className="ai-settings">
-      <div className="field">
-        <label htmlFor={ids.provider}>Provider</label>
-        <select
-          id={ids.provider}
-          value={provider}
-          onChange={(e) => void save({ provider: e.target.value as ProviderId })}
-        >
-          {PROVIDERS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {provider !== "ollama" && (
-        <form className="field" onSubmit={onSaveKey}>
-          <label htmlFor={ids.key}>API key</label>
-          <input
-            id={ids.key}
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            value={keyInput}
-            onChange={(e) => setKeyInput(e.target.value)}
-          />
-          <div className="row">
-            <button type="submit" disabled={keyBusy || keyInput.trim() === ""}>
-              Save key
-            </button>
-            <button type="button" disabled={keyBusy || keySaved !== true} onClick={onRemoveKey}>
-              Remove key
-            </button>
-            <span className="muted">
-              {keySaved === null ? "" : keySaved ? "Key saved" : "No key yet"}
-            </span>
+      <div className="group">
+        <div className="form-row">
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.provider}>
+              Provider
+            </label>
+            <select
+              id={ids.provider}
+              value={provider}
+              onChange={(e) => void save({ provider: e.target.value as ProviderId })}
+            >
+              {PROVIDERS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
           </div>
-          {keyError && <p role="alert" className="error">{keyError}</p>}
-        </form>
-      )}
-
-      <div className="field">
-        <label htmlFor={ids.model}>Model</label>
-        <div className="row">
-          <select
-            id={ids.model}
-            value={savedModel}
-            onChange={(e) => void save({ models: { ...settings.models, [provider]: e.target.value } })}
-          >
-            {savedModel === "" && <option value="">Choose a model</option>}
-            {modelOptions.map((m) => (
-              <option key={m} value={m}>
-                {optionLabel(m)}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            disabled={modelsBusy || (provider !== "ollama" && keySaved !== true)}
-            onClick={() => void loadModels(provider)}
-          >
-            Refresh
-          </button>
         </div>
-        {modelsError && renderProblem(modelsError)}
-        {showDownload && (
-          <div className="row">
-            <button type="button" disabled={pulling} onClick={() => void onDownload()}>
-              Download {savedModel}
+
+        {provider !== "ollama" && (
+          <form className="form-row" onSubmit={onSaveKey}>
+            <div className="form-line">
+              <label className="form-label" htmlFor={ids.key}>
+                API key
+              </label>
+              <input
+                id={ids.key}
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                value={keyInput}
+                onChange={(e) => setKeyInput(e.target.value)}
+              />
+            </div>
+            <div className="form-line">
+              <span className="muted">
+                {keySaved === null ? "" : keySaved ? "Key saved" : "No key yet"}
+              </span>
+              <div className="button-row">
+                <button type="button" disabled={keyBusy || keySaved !== true} onClick={onRemoveKey}>
+                  Remove key
+                </button>
+                <button type="submit" disabled={keyBusy || keyInput.trim() === ""}>
+                  Save key
+                </button>
+              </div>
+            </div>
+            {keyError && <p role="alert" className="error">{keyError}</p>}
+          </form>
+        )}
+
+        <div className="form-row">
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.model}>
+              Model
+            </label>
+            <div className="form-control">
+              <select
+                id={ids.model}
+                value={savedModel}
+                onChange={(e) => void save({ models: { ...settings.models, [provider]: e.target.value } })}
+              >
+                {savedModel === "" && <option value="">Choose a model</option>}
+                {modelOptions.map((m) => (
+                  <option key={m} value={m}>
+                    {optionLabel(m)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={modelsBusy || (provider !== "ollama" && keySaved !== true)}
+                onClick={() => void loadModels(provider)}
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+          {modelsError && renderProblem(modelsError)}
+          {showDownload && (
+            <div className="button-row">
+              <button type="button" disabled={pulling} onClick={() => void onDownload()}>
+                Download {savedModel}
+              </button>
+            </div>
+          )}
+          {(showDownload || pulling) && <PullStatus pull={pull} />}
+        </div>
+
+        <div className="form-row">
+          <div className="form-line">
+            <span className="form-label">
+              {test.kind === "idle" && "Connection"}
+              {test.kind === "running" && <span className="muted">Testing…</span>}
+              {test.kind === "ok" && <span role="status" className="ok">Connected: {test.text}</span>}
+              {test.kind === "error" && "Connection"}
+            </span>
+            <button type="button" disabled={test.kind === "running"} onClick={onTest}>
+              Test connection
             </button>
+          </div>
+          {test.kind === "error" && renderProblem(test.problem)}
+        </div>
+
+        {!props.compact && (
+          <div className="form-row">
+            <div className="form-line">
+              <label className="form-label" htmlFor={ids.fallback}>
+                If the online AI fails, use local
+              </label>
+              <Switch
+                id={ids.fallback}
+                checked={settings.fallback_to_local}
+                onChange={(e) => void save({ fallback_to_local: e.target.checked })}
+              />
+            </div>
           </div>
         )}
-        {(showDownload || pulling) && <PullStatus pull={pull} />}
       </div>
-
-      <div className="field">
-        <div className="row">
-          <button type="button" disabled={test.kind === "running"} onClick={onTest}>
-            Test connection
-          </button>
-          {test.kind === "running" && <span className="muted">Testing…</span>}
-          {test.kind === "ok" && <span role="status" className="ok">Connected: {test.text}</span>}
-        </div>
-        {test.kind === "error" && renderProblem(test.problem)}
-      </div>
-
-      {!props.compact && (
-        <div className="check">
-          <input
-            id={ids.fallback}
-            type="checkbox"
-            checked={settings.fallback_to_local}
-            onChange={(e) => void save({ fallback_to_local: e.target.checked })}
-          />
-          <label htmlFor={ids.fallback}>If the online AI fails, use local</label>
-        </div>
-      )}
       {settingsError && <p role="alert" className="error">{settingsError}</p>}
     </div>
   );

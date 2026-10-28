@@ -1,12 +1,13 @@
 import { useEffect, useId, useState } from "react";
 import { getAutostart, setAutostart } from "../lib/ipc";
+import { Switch } from "../ui/Switch";
 import { AiSettings } from "./AiSettings";
 import { errorText, useSettings } from "./useSettings";
 
 /** The Settings tab of the home window. */
 export function Settings() {
   const { settings, error, save } = useSettings();
-  const ids = { history: useId(), startup: useId(), chatKey: useId() };
+  const ids = { history: useId(), startup: useId(), chatKey: useId(), chatKeyNote: useId() };
   const [chatKey, setChatKey] = useState("");
   const [autostart, setAutostartState] = useState<boolean | null>(null);
   const [autostartError, setAutostartError] = useState<string | null>(null);
@@ -58,72 +59,88 @@ export function Settings() {
 
   return (
     <div className="page">
-      {error && <p role="alert" className="error">{error}</p>}
+      {error && <p role="alert" className="notice">{error}</p>}
 
-      <section>
-        <h2>AI</h2>
-        <AiSettings />
-      </section>
+      <h2 className="group-title">AI</h2>
+      <AiSettings />
 
-      <section>
-        <h2>Shortcuts</h2>
+      <h2 className="group-title">Shortcuts</h2>
+      <div className="group">
         <form
-          className="field"
+          className="form-row"
           onSubmit={(e) => {
             e.preventDefault();
             void save({ chat_hotkey: chatKey.trim() });
           }}
         >
-          <label htmlFor={ids.chatKey}>Open the chat from any app</label>
-          <div className="row">
-            <input
-              id={ids.chatKey}
-              type="text"
-              value={chatKey}
-              placeholder="Off"
-              spellCheck={false}
-              onChange={(e) => setChatKey(e.target.value)}
-            />
-            <button type="submit" disabled={chatKey.trim() === settings.chat_hotkey}>
-              Save
-            </button>
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.chatKey}>
+              Open the chat from any app
+            </label>
+            <div className="form-control">
+              <input
+                id={ids.chatKey}
+                type="text"
+                value={chatKey}
+                placeholder="Off"
+                spellCheck={false}
+                aria-describedby={ids.chatKeyNote}
+                onChange={(e) => setChatKey(e.target.value)}
+              />
+              <button type="submit" disabled={chatKey.trim() === settings.chat_hotkey}>
+                Save
+              </button>
+            </div>
           </div>
-          <p className="muted">For example Ctrl+Alt+M. Leave it empty to turn the shortcut off.</p>
         </form>
-        <p>Circle to look up: Ctrl+Alt+Space</p>
-      </section>
-
-      <section>
-        <h2>Privacy</h2>
-        <div className="check">
-          <input
-            id={ids.history}
-            type="checkbox"
-            checked={settings.history_enabled}
-            onChange={(e) => void save({ history_enabled: e.target.checked })}
-          />
-          <label htmlFor={ids.history}>Keep chat history</label>
+        <div className="form-row">
+          <div className="form-line">
+            <span className="form-label">Circle to look up</span>
+            <kbd>Ctrl+Alt+Space</kbd>
+          </div>
         </div>
-        <p className="muted">
-          Screen captures are only sent to the AI you pick above. mouce cannot open, change, or delete
-          your files.
-        </p>
-      </section>
+      </div>
+      <p className="group-footer" id={ids.chatKeyNote}>
+        For example Ctrl+Alt+M. Leave it empty to turn the shortcut off.
+      </p>
 
-      <section>
-        <h2>Startup</h2>
-        <div className="check">
-          <input
-            id={ids.startup}
-            type="checkbox"
-            checked={autostart === true}
-            disabled={autostart === null || autostartBusy}
-            onChange={(e) => void onAutostart(e.target.checked)}
-          />
-          <label htmlFor={ids.startup}>Start mouce when Windows starts</label>
+      <h2 className="group-title">Privacy</h2>
+      <div className="group">
+        <div className="form-row">
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.history}>
+              Keep chat history
+            </label>
+            <Switch
+              id={ids.history}
+              checked={settings.history_enabled}
+              onChange={(e) => void save({ history_enabled: e.target.checked })}
+            />
+          </div>
         </div>
-        {autostartError && <p role="alert" className="error">{autostartError}</p>}
-      </section>
+      </div>
+      <p className="group-footer">
+        Screen captures are only sent to the AI you pick above. mouce cannot open, change, or delete
+        your files.
+      </p>
+
+      <h2 className="group-title">Startup</h2>
+      <div className="group">
+        <div className="form-row">
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.startup}>
+              Start mouce when Windows starts
+            </label>
+            <Switch
+              id={ids.startup}
+              checked={autostart === true}
+              disabled={autostart === null || autostartBusy}
+              onChange={(e) => void onAutostart(e.target.checked)}
+            />
+          </div>
+          {autostartError && <p role="alert" className="error">{autostartError}</p>}
+        </div>
+      </div>
     </div>
   );
 }
