@@ -1,9 +1,12 @@
 pub mod ai;
+pub mod chat;
 pub mod commands;
+pub mod hotkey;
 pub mod ollama_setup;
 pub mod secrets;
 pub mod settings;
 pub mod mouce;
+pub mod screen;
 pub mod startup;
 pub mod store;
 pub mod tray;
@@ -11,7 +14,7 @@ pub mod tray;
 use secrets::Secrets;
 use settings::Settings;
 use std::sync::atomic::AtomicBool;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use store::AppStore;
 use tauri::Manager;
 
@@ -23,16 +26,27 @@ pub struct AppState {
     pub pull_active: AtomicBool,
     /// Windows (Settings, first run) that are being built right now.
     pub opening: mouce::OpeningWindows,
+    /// The chat with mouce, loaded from the saved history when that is turned on.
+    pub chat: Mutex<chat::Conversation>,
+    /// Set while mouce is answering; only one answer is written at a time.
+    pub chat_active: AtomicBool,
+    /// Stops the answer being written, if there is one.
+    pub chat_stop: Mutex<Option<Arc<tokio::sync::Notify>>>,
 }
 
 impl AppState {
     pub fn new(store: AppStore, settings: Settings, secrets: Secrets) -> AppState {
+        let history =
+            if settings.history_enabled { chat::load_history(&store) } else { Vec::new() };
         AppState {
             store,
             settings: Mutex::new(settings),
             secrets,
             pull_active: AtomicBool::new(false),
             opening: mouce::OpeningWindows::default(),
+            chat: Mutex::new(chat::Conversation::from_turns(history)),
+            chat_active: AtomicBool::new(false),
+            chat_stop: Mutex::new(None),
         }
     }
 }
@@ -77,6 +91,10 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(AppState::new(store, settings.clone(), Secrets::new("com.mouce.app")));
     mouce::create(app.handle(), &settings)?;
     tray::build(app.handle())?;
+    // Another app may already own the shortcut; mouce still works without it.
+    if let Err(e) = hotkey::register(app.handle(), &settings.chat_hotkey) {
+        eprintln!("could not set up the chat shortcut: {e}");
+    }
     if !settings.first_run_done {
         mouce::open_firstrun(app.handle());
     }
@@ -100,6 +118,16 @@ pub fn run() -> Result<(), String> {
             None,
         ))
         .plugin(tauri_plugin_opener::init())
+        // Only the chat shortcut is ever registered (see `hotkey`), so any press opens the chat.
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        mouce::open_chat(app);
+                    }
+                })
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             commands::mouce_clicked,
             commands::get_settings,
@@ -115,6 +143,11 @@ pub fn run() -> Result<(), String> {
             commands::get_autostart,
             commands::set_autostart,
             commands::finish_first_run,
+            commands::chat_history,
+            commands::chat_send,
+            commands::chat_stop,
+            commands::chat_clear,
+            commands::open_chat,
         ])
         .setup(|app| {
             // A setup error would make Tauri panic, which under the windows subsystem is a

@@ -42,6 +42,8 @@ pub struct Settings {
     pub mouce_rotation: bool,
     pub mouce_position: Option<(i32, i32)>,
     pub circle_hotkey: String,
+    /// Opens the chat from any app; blank turns it off.
+    pub chat_hotkey: String,
     pub history_enabled: bool,
     pub fallback_to_local: bool,
     pub first_run_done: bool,
@@ -57,6 +59,7 @@ impl Default for Settings {
             mouce_rotation: true,
             mouce_position: None,
             circle_hotkey: "Ctrl+Alt+Space".to_string(),
+            chat_hotkey: crate::hotkey::DEFAULT_CHAT_HOTKEY.to_string(),
             history_enabled: false,
             fallback_to_local: true,
             first_run_done: false,
@@ -101,6 +104,7 @@ mod tests {
         assert!(d.mouce_rotation);
         assert_eq!(d.mouce_position, None);
         assert_eq!(d.circle_hotkey, "Ctrl+Alt+Space");
+        assert_eq!(d.chat_hotkey, "Ctrl+Alt+M");
         assert!(!d.history_enabled);
         assert!(d.fallback_to_local);
         assert!(!d.first_run_done);

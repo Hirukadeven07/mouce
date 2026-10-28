@@ -57,7 +57,7 @@ export function MouceWindow() {
     <div
       className="mouce-window"
       role="button"
-      aria-label="mouce — click to open settings"
+      aria-label="mouce — click to chat"
       onContextMenu={(e) => e.preventDefault()}
       onPointerDown={(e) => {
         if (e.button !== 0) return;

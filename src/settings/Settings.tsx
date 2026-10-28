@@ -6,10 +6,17 @@ import { errorText, useSettings } from "./useSettings";
 /** The Settings tab of the home window. */
 export function Settings() {
   const { settings, error, save } = useSettings();
-  const ids = { history: useId(), startup: useId() };
+  const ids = { history: useId(), startup: useId(), chatKey: useId() };
+  const [chatKey, setChatKey] = useState("");
   const [autostart, setAutostartState] = useState<boolean | null>(null);
   const [autostartError, setAutostartError] = useState<string | null>(null);
   const [autostartBusy, setAutostartBusy] = useState(false);
+
+  // Show the saved shortcut whenever it changes (saved here, refused, or changed elsewhere).
+  const savedChatKey = settings?.chat_hotkey;
+  useEffect(() => {
+    if (savedChatKey !== undefined) setChatKey(savedChatKey);
+  }, [savedChatKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +67,29 @@ export function Settings() {
 
       <section>
         <h2>Shortcuts</h2>
+        <form
+          className="field"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save({ chat_hotkey: chatKey.trim() });
+          }}
+        >
+          <label htmlFor={ids.chatKey}>Open the chat from any app</label>
+          <div className="row">
+            <input
+              id={ids.chatKey}
+              type="text"
+              value={chatKey}
+              placeholder="Off"
+              spellCheck={false}
+              onChange={(e) => setChatKey(e.target.value)}
+            />
+            <button type="submit" disabled={chatKey.trim() === settings.chat_hotkey}>
+              Save
+            </button>
+          </div>
+          <p className="muted">For example Ctrl+Alt+M. Leave it empty to turn the shortcut off.</p>
+        </form>
         <p>Circle to look up: Ctrl+Alt+Space</p>
       </section>
 

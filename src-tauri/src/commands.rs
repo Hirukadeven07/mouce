@@ -1,17 +1,22 @@
-//! Tauri commands for the Settings and first-run windows.
+//! Tauri commands for the mouce, chat, home and first-run windows.
 //!
 //! Each command is a thin wrapper over a plain `*_impl` function so the logic can be
 //! unit-tested without a running app. There is deliberately no command that returns an
 //! API key: keys go in, and are only read inside Rust to talk to the chosen provider.
 
-use crate::ai::{self, ChatMessage, ChatRequest, Role};
+use crate::ai::{self, ChatMessage, ChatRequest, ImageInput, Role};
+use crate::chat::{self, Conversation, Turn};
 use crate::ollama_setup::{self, OllamaStatus, PullProgress};
 use crate::settings::{self, ProviderId, Settings};
-use crate::{mouce, AppState};
+use crate::{hotkey, mouce, screen, AppState};
+use serde::Serialize;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::MutexGuard;
+use std::sync::{Arc, MutexGuard};
+use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::Notify;
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_opener::OpenerExt as _;
 
@@ -26,6 +31,11 @@ const TEST_MAX_TOKENS: u32 = 16;
 
 fn lock(state: &AppState) -> MutexGuard<'_, Settings> {
     state.settings.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Lock order: when both are needed, take the settings lock first, then the chat lock.
+fn lock_chat(state: &AppState) -> MutexGuard<'_, Conversation> {
+    state.chat.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// Runs a closure when dropped: on normal exit, on an early return, when a future holding
@@ -58,10 +68,10 @@ fn log_best_effort<E: std::fmt::Display>(
     }
 }
 
-/// The mouce was clicked (not dragged): open the home window.
+/// The mouce was clicked (not dragged): open the chat beside it.
 #[tauri::command]
 pub fn mouce_clicked(app: AppHandle) {
-    mouce::open_home(&app, mouce::HomeTab::Home);
+    mouce::open_chat(&app);
 }
 
 // ---- settings ----
@@ -73,6 +83,7 @@ pub fn get_settings_impl(state: &AppState) -> Settings {
 /// Saves `incoming` while holding the settings lock, so a concurrent writer (such as the
 /// mouce-position save) can never be overwritten by a stale snapshot. The position and the
 /// first-run flag belong to the backend; whatever the window sends for them is ignored.
+/// Turning chat history on saves the chat so far; turning it off deletes the saved copy.
 /// Returns the saved settings and whether the mouce size changed.
 pub fn update_settings_impl(
     state: &AppState,
@@ -82,6 +93,17 @@ pub fn update_settings_impl(
     let mut next = incoming;
     next.mouce_position = current.mouce_position;
     next.first_run_done = current.first_run_done;
+    next.chat_hotkey = next.chat_hotkey.trim().to_string();
+    hotkey::parse(&next.chat_hotkey)?;
+    if next.history_enabled != current.history_enabled {
+        let chat = lock_chat(state);
+        let result = if next.history_enabled {
+            chat::save_history(&state.store, chat.turns())
+        } else {
+            chat::forget_history(&state.store)
+        };
+        result.map_err(|e| e.to_string())?;
+    }
     settings::save(&state.store, &next).map_err(|e| e.to_string())?;
     let size_changed = current.mouce_size != next.mouce_size;
     *current = next.clone();
@@ -99,7 +121,18 @@ pub fn update_settings(
     state: State<'_, AppState>,
     settings: Settings,
 ) -> Result<Settings, String> {
-    let (saved, size_changed) = update_settings_impl(&state, settings)?;
+    let old_hotkey = get_settings_impl(&state).chat_hotkey;
+    let hotkey_changed = old_hotkey.trim() != settings.chat_hotkey.trim();
+    if hotkey_changed {
+        hotkey::replace(&app, &old_hotkey, &settings.chat_hotkey)?;
+    }
+    let new_hotkey = settings.chat_hotkey.clone();
+    let (saved, size_changed) = update_settings_impl(&state, settings).inspect_err(|_| {
+        if hotkey_changed {
+            // Not saved, so the old shortcut stays the one that works.
+            let _ = hotkey::replace(&app, &new_hotkey, &old_hotkey);
+        }
+    })?;
     let _ = app.emit(mouce::SETTINGS_CHANGED_EVENT, &saved);
     if size_changed {
         // The settings are already saved; a window that could not resize is not an error.
@@ -223,6 +256,214 @@ pub async fn test_provider(
     test_provider_impl(&state, provider).await
 }
 
+// ---- chat ----
+
+/// How an answer ended. `text` is the whole answer (or what was written before Stop).
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct ChatReply {
+    pub text: String,
+    /// The user pressed Stop before the answer was finished.
+    pub stopped: bool,
+    /// The chosen online AI failed, so the local one answered instead.
+    pub used_local: bool,
+}
+
+/// Saves the chat when history is on. Holding the settings lock means turning history off
+/// at the same moment cannot leave a saved copy behind.
+fn persist_chat(state: &AppState) -> Result<(), String> {
+    let settings = lock(state);
+    if !settings.history_enabled {
+        return Ok(());
+    }
+    let chat = lock_chat(state);
+    chat::save_history(&state.store, chat.turns()).map_err(|e| e.to_string())
+}
+
+/// Asks `provider` about the conversation so far, streaming the answer to `on_chunk`.
+async fn ask(
+    state: &AppState,
+    settings: &Settings,
+    provider: ProviderId,
+    on_chunk: &mut (dyn for<'a> FnMut(&'a str) + Send),
+) -> Result<String, String> {
+    let model = model_for(settings, provider)?;
+    let request = lock_chat(state).request(model);
+    let provider = build_provider(state, settings, provider)?;
+    provider.chat_stream(&request, on_chunk).await.map_err(|e| e.to_string())
+}
+
+/// Asks the chosen AI. If an online AI fails before writing anything and fallback is on,
+/// asks the local one instead. Returns the answer and whether the local AI gave it.
+async fn ask_with_fallback(
+    state: &AppState,
+    settings: &Settings,
+    on_chunk: &mut (dyn for<'a> FnMut(&'a str) + Send),
+) -> Result<(String, bool), String> {
+    let mut wrote = false;
+    let first = {
+        let mut track = |d: &str| {
+            wrote = true;
+            on_chunk(d);
+        };
+        ask(state, settings, settings.provider, &mut track).await
+    };
+    match first {
+        Ok(text) => Ok((text, false)),
+        Err(e)
+            if !wrote && settings.provider != ProviderId::Ollama && settings.fallback_to_local =>
+        {
+            match ask(state, settings, ProviderId::Ollama, on_chunk).await {
+                Ok(text) => Ok((text, true)),
+                Err(local) => Err(format!("{e} (the local AI could not answer either: {local})")),
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Adds the user's question (with a screen picture when `screen` is given) and streams
+/// mouce's answer to `on_delta`. A failed question is taken back out of the chat so it
+/// can be asked again; Stop keeps whatever was already written.
+pub async fn chat_send_impl<F>(
+    state: &AppState,
+    text: &str,
+    screen: Option<F>,
+    on_delta: &mut (dyn FnMut(&str) + Send),
+) -> Result<ChatReply, String>
+where
+    F: Future<Output = Result<ImageInput, String>> + Send,
+{
+    let Some(_slot) = BusySlot::try_take(&state.chat_active) else {
+        return Err("mouce is still answering".to_string());
+    };
+    let text = match text.trim() {
+        "" if screen.is_some() => chat::LOOK_QUESTION.to_string(),
+        "" => return Err("Type a question first".to_string()),
+        t => t.to_string(),
+    };
+    let stop = Arc::new(Notify::new());
+    *state.chat_stop.lock().unwrap_or_else(|e| e.into_inner()) = Some(stop.clone());
+    let _forget_stop = OnDrop::new(|| {
+        *state.chat_stop.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    });
+
+    let screen = match screen {
+        Some(look) => Some(look.await?),
+        None => None,
+    };
+    let settings = get_settings_impl(state);
+    lock_chat(state).push_user(text, screen);
+
+    let mut written = String::new();
+    let outcome = {
+        let mut on_chunk = |d: &str| {
+            written.push_str(d);
+            on_delta(d);
+        };
+        tokio::select! {
+            result = ask_with_fallback(state, &settings, &mut on_chunk) => Some(result),
+            _ = stop.notified() => None,
+        }
+    };
+
+    let reply = {
+        let mut chat = lock_chat(state);
+        match outcome {
+            Some(Ok((text, used_local))) => {
+                chat.push_assistant(text.clone());
+                ChatReply { text, stopped: false, used_local }
+            }
+            Some(Err(e)) => {
+                chat.drop_unanswered();
+                return Err(e);
+            }
+            None => {
+                if written.trim().is_empty() {
+                    chat.drop_unanswered();
+                } else {
+                    chat.push_assistant(written.clone());
+                }
+                ChatReply { text: written, stopped: true, used_local: false }
+            }
+        }
+    };
+    // The answer is already shown; a history that could not be saved is not an error.
+    log_best_effort("save the chat history", persist_chat(state), |m| eprintln!("{m}"));
+    Ok(reply)
+}
+
+/// Stops the answer being written, if there is one.
+pub fn chat_stop_impl(state: &AppState) {
+    if let Some(stop) = state.chat_stop.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        stop.notify_one();
+    }
+}
+
+/// Starts a new chat: forgets this one, and its saved copy when history is on.
+pub fn chat_clear_impl(state: &AppState) -> Result<(), String> {
+    if state.chat_active.load(Ordering::SeqCst) {
+        return Err("Wait for mouce to finish answering".to_string());
+    }
+    let settings = lock(state);
+    lock_chat(state).clear();
+    if settings.history_enabled {
+        chat::forget_history(&state.store).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Takes a picture of the screen the mouce is on, for the AI to look at.
+async fn look_at_screen(app: AppHandle) -> Result<ImageInput, String> {
+    let area = mouce::screen_area(&app).ok_or("Could not find the screen to look at")?;
+    let image = tauri::async_runtime::spawn_blocking(move || screen::capture(area))
+        .await
+        .map_err(|e| e.to_string())??;
+    let _ = app.emit(mouce::MOUCE_STATE_EVENT, "thinking");
+    Ok(ImageInput { mime: "image/jpeg".to_string(), base64: image.base64 })
+}
+
+#[tauri::command(async)]
+pub fn chat_history(state: State<'_, AppState>) -> Vec<Turn> {
+    lock_chat(&state).turns().to_vec()
+}
+
+/// Asks mouce `text`, after looking at the screen when `look` is set. Each piece of the
+/// answer is sent down `on_delta` as it arrives.
+#[tauri::command]
+pub async fn chat_send(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    text: String,
+    look: bool,
+    on_delta: Channel<String>,
+) -> Result<ChatReply, String> {
+    let _ = app.emit(mouce::MOUCE_STATE_EVENT, if look { "looking" } else { "thinking" });
+    // Back to idle however this ends: finished, failed, stopped or cancelled.
+    let _idle = OnDrop::new(|| {
+        let _ = app.emit(mouce::MOUCE_STATE_EVENT, "idle");
+    });
+    let screen = look.then(|| look_at_screen(app.clone()));
+    chat_send_impl(&state, &text, screen, &mut |d| {
+        let _ = on_delta.send(d.to_string());
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn chat_stop(state: State<'_, AppState>) {
+    chat_stop_impl(&state);
+}
+
+#[tauri::command(async)]
+pub fn chat_clear(state: State<'_, AppState>) -> Result<(), String> {
+    chat_clear_impl(&state)
+}
+
+#[tauri::command]
+pub fn open_chat(app: AppHandle) {
+    mouce::open_chat(&app);
+}
+
 // ---- Ollama ----
 
 fn ollama_exe_hint_in(local_app_data: Option<String>) -> PathBuf {
@@ -237,18 +478,19 @@ pub async fn ollama_status_impl(state: &AppState, exe_hint: &Path) -> OllamaStat
     ollama_setup::status(&base_url, exe_hint).await
 }
 
-/// Holds the "a download is running" flag; releases it when dropped.
-struct PullSlot<'a>(&'a AtomicBool);
+/// Holds a "this is running" flag (a model download, a chat answer); releases it when
+/// dropped.
+struct BusySlot<'a>(&'a AtomicBool);
 
-impl<'a> PullSlot<'a> {
-    fn try_take(flag: &'a AtomicBool) -> Option<PullSlot<'a>> {
+impl<'a> BusySlot<'a> {
+    fn try_take(flag: &'a AtomicBool) -> Option<BusySlot<'a>> {
         flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .ok()
-            .map(|_| PullSlot(flag))
+            .map(|_| BusySlot(flag))
     }
 }
 
-impl Drop for PullSlot<'_> {
+impl Drop for BusySlot<'_> {
     fn drop(&mut self) {
         self.0.store(false, Ordering::SeqCst);
     }
@@ -263,7 +505,7 @@ pub async fn pull_ollama_model_impl(
     if model.is_empty() {
         return Err("Choose a model to download".to_string());
     }
-    let Some(_slot) = PullSlot::try_take(&state.pull_active) else {
+    let Some(_slot) = BusySlot::try_take(&state.pull_active) else {
         return Err("A download is already in progress".to_string());
     };
     let base_url = get_settings_impl(state).ollama_base_url;
@@ -405,6 +647,18 @@ mod tests {
         assert_eq!(saved.mouce_position, Some((5, 6)));
         assert!(saved.first_run_done);
         assert!(!saved.mouce_rotation);
+    }
+
+    #[test]
+    fn update_settings_trims_the_chat_shortcut_and_refuses_a_bad_one() {
+        let (_d, st) = state(Settings::default());
+        let spaced = Settings { chat_hotkey: "  Ctrl+Alt+K ".into(), ..Default::default() };
+        let (saved, _) = update_settings_impl(&st, spaced).unwrap();
+        assert_eq!(saved.chat_hotkey, "Ctrl+Alt+K");
+
+        let bare = Settings { chat_hotkey: "K".into(), ..Default::default() };
+        assert!(update_settings_impl(&st, bare).unwrap_err().contains("needs Ctrl, Alt"));
+        assert_eq!(crate::settings::load(&st.store).chat_hotkey, "Ctrl+Alt+K", "not saved");
     }
 
     #[test]
@@ -722,6 +976,259 @@ mod tests {
         assert!(!done.mouce_rotation);
         assert!(crate::settings::load(&st.store).first_run_done);
         assert!(get_settings_impl(&st).first_run_done);
+    }
+
+    // ---- chat ----
+
+    type Look = std::future::Ready<Result<ImageInput, String>>;
+
+    fn no_look() -> Option<Look> {
+        None
+    }
+
+    fn look() -> Option<Look> {
+        Some(std::future::ready(Ok(ImageInput {
+            mime: "image/jpeg".into(),
+            base64: "U0NSRUVO".into(),
+        })))
+    }
+
+    async fn mount_chat(server: &MockServer, response: ResponseTemplate) {
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(response)
+            .mount(server)
+            .await;
+    }
+
+    async fn sent_bodies(server: &MockServer) -> Vec<serde_json::Value> {
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| serde_json::from_slice(&r.body).unwrap())
+            .collect()
+    }
+
+    fn two_chunks(a: &str, b: &str) -> String {
+        let line = |text: &str, done: bool| {
+            format!("{{\"message\":{{\"content\":\"{text}\"}},\"done\":{done}}}\n")
+        };
+        line(a, false) + &line(b, true)
+    }
+
+    #[tokio::test]
+    async fn chat_streams_the_answer_and_remembers_both_sides() {
+        let server = MockServer::start().await;
+        let body = two_chunks("Hel", "lo");
+        mount_chat(&server, ResponseTemplate::new(200).set_body_string(body)).await;
+        let (_d, st) = state_for(&server);
+        let mut chunks = Vec::new();
+        let reply = chat_send_impl(&st, "  hi  ", no_look(), &mut |d| chunks.push(d.to_string()))
+            .await
+            .unwrap();
+        assert_eq!(reply, ChatReply { text: "Hello".into(), stopped: false, used_local: false });
+        assert_eq!(chunks, vec!["Hel", "lo"]);
+        let turns = lock_chat(&st).turns().to_vec();
+        assert_eq!(turns.iter().map(|t| t.text.as_str()).collect::<Vec<_>>(), vec!["hi", "Hello"]);
+
+        let body = &sent_bodies(&server).await[0];
+        assert_eq!(body["model"], "gemma3:4b");
+        assert_eq!(body["messages"][0]["role"], "system");
+        assert_eq!(body["messages"][0]["content"], chat::SYSTEM_PROMPT);
+        assert_eq!(body["messages"][1]["content"], "hi");
+    }
+
+    #[tokio::test]
+    async fn looking_sends_the_screen_with_a_default_question() {
+        let server = MockServer::start().await;
+        let body = ndjson_reply("A browser");
+        mount_chat(&server, ResponseTemplate::new(200).set_body_string(body)).await;
+        let (_d, st) = state_for(&server);
+        chat_send_impl(&st, "", look(), &mut |_| {}).await.unwrap();
+        let body = &sent_bodies(&server).await[0];
+        assert_eq!(body["messages"][1]["content"], chat::LOOK_QUESTION);
+        assert_eq!(body["messages"][1]["images"], serde_json::json!(["U0NSRUVO"]));
+        assert!(lock_chat(&st).turns()[0].looked);
+    }
+
+    #[tokio::test]
+    async fn a_blank_question_is_refused_before_any_request() {
+        let server = MockServer::start().await;
+        let (_d, st) = state_for(&server);
+        let err = chat_send_impl(&st, " \n ", no_look(), &mut |_| {}).await.unwrap_err();
+        assert_eq!(err, "Type a question first");
+        assert!(server.received_requests().await.unwrap().is_empty());
+        assert!(!st.chat_active.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn a_failed_question_is_taken_back_so_it_can_be_asked_again() {
+        let server = MockServer::start().await;
+        mount_chat(&server, ResponseTemplate::new(500).set_body_string("boom")).await;
+        let (_d, st) = state_for(&server);
+        let err = chat_send_impl(&st, "hi", look(), &mut |_| {}).await.unwrap_err();
+        assert!(err.contains("500"), "{err}");
+        assert!(lock_chat(&st).turns().is_empty());
+        assert!(!st.chat_active.load(Ordering::SeqCst), "released after an error");
+    }
+
+    #[tokio::test]
+    async fn a_failing_online_ai_falls_back_to_the_local_one() {
+        let server = MockServer::start().await;
+        let body = ndjson_reply("local hi");
+        mount_chat(&server, ResponseTemplate::new(200).set_body_string(body)).await;
+        let (_d, st) = state(Settings {
+            provider: ProviderId::OpenAi,
+            fallback_to_local: true,
+            ollama_base_url: server.uri(),
+            ..Default::default()
+        });
+        // No OpenAI model is chosen, so the online AI fails before writing anything.
+        let reply = chat_send_impl(&st, "hi", no_look(), &mut |_| {}).await.unwrap();
+        assert_eq!(reply, ChatReply { text: "local hi".into(), stopped: false, used_local: true });
+    }
+
+    #[tokio::test]
+    async fn without_fallback_the_online_error_is_shown() {
+        let server = MockServer::start().await;
+        let (_d, st) = state(Settings {
+            provider: ProviderId::OpenAi,
+            fallback_to_local: false,
+            ollama_base_url: server.uri(),
+            ..Default::default()
+        });
+        let err = chat_send_impl(&st, "hi", no_look(), &mut |_| {}).await.unwrap_err();
+        assert_eq!(err, "Pick a model in Settings first");
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn when_both_fail_the_error_names_both() {
+        let server = MockServer::start().await;
+        mount_chat(&server, ResponseTemplate::new(500).set_body_string("down")).await;
+        let (_d, st) = state(Settings {
+            provider: ProviderId::OpenAi,
+            fallback_to_local: true,
+            ollama_base_url: server.uri(),
+            ..Default::default()
+        });
+        let err = chat_send_impl(&st, "hi", no_look(), &mut |_| {}).await.unwrap_err();
+        assert!(err.starts_with("Pick a model in Settings first"), "{err}");
+        assert!(err.contains("the local AI could not answer either"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn stop_ends_the_answer_and_takes_back_an_unanswered_question() {
+        let server = MockServer::start().await;
+        mount_chat(
+            &server,
+            ResponseTemplate::new(200)
+                .set_body_string(ndjson_reply("late"))
+                .set_delay(Duration::from_secs(5)),
+        )
+        .await;
+        let (_d, st) = state_for(&server);
+        let stopper = async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            chat_stop_impl(&st);
+        };
+        let mut quiet = |_: &str| {};
+        let (reply, ()) = tokio::join!(chat_send_impl(&st, "hi", no_look(), &mut quiet), stopper);
+        let stopped = ChatReply { text: String::new(), stopped: true, used_local: false };
+        assert_eq!(reply.unwrap(), stopped);
+        assert!(lock_chat(&st).turns().is_empty());
+        assert!(st.chat_stop.lock().unwrap().is_none(), "nothing left to stop");
+        assert!(!st.chat_active.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn a_second_question_waits_for_the_first_answer() {
+        let server = MockServer::start().await;
+        mount_chat(
+            &server,
+            ResponseTemplate::new(200)
+                .set_body_string(ndjson_reply("one"))
+                .set_delay(Duration::from_millis(500)),
+        )
+        .await;
+        let (_d, st) = state_for(&server);
+        let second = async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            chat_send_impl(&st, "two", no_look(), &mut |_| {}).await
+        };
+        let mut quiet = |_: &str| {};
+        let first = chat_send_impl(&st, "one", no_look(), &mut quiet);
+        let (first, second) = tokio::join!(first, second);
+        assert_eq!(first.unwrap().text, "one");
+        assert_eq!(second.unwrap_err(), "mouce is still answering");
+        assert_eq!(lock_chat(&st).turns().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn history_is_saved_only_while_it_is_turned_on() {
+        let server = MockServer::start().await;
+        mount_chat(&server, ResponseTemplate::new(200).set_body_string(ndjson_reply("hey"))).await;
+        let (_d, st) = state_for(&server);
+        chat_send_impl(&st, "hi", look(), &mut |_| {}).await.unwrap();
+        assert!(chat::load_history(&st.store).is_empty(), "off by default");
+
+        let on = Settings { history_enabled: true, ..get_settings_impl(&st) };
+        update_settings_impl(&st, on.clone()).unwrap();
+        assert_eq!(chat::load_history(&st.store).len(), 2, "turning it on saves the chat so far");
+
+        chat_send_impl(&st, "again", no_look(), &mut |_| {}).await.unwrap();
+        let saved = chat::load_history(&st.store);
+        assert_eq!(saved.len(), 4);
+        assert!(saved[0].looked);
+
+        update_settings_impl(&st, Settings { history_enabled: false, ..on }).unwrap();
+        assert!(chat::load_history(&st.store).is_empty(), "turning it off deletes the copy");
+        assert_eq!(lock_chat(&st).turns().len(), 4, "the open chat stays");
+    }
+
+    #[test]
+    fn a_new_chat_forgets_the_saved_copy_too() {
+        let (_d, st) = state(Settings { history_enabled: true, ..Default::default() });
+        lock_chat(&st).push_user("hi".into(), None);
+        persist_chat(&st).unwrap();
+        assert_eq!(chat::load_history(&st.store).len(), 1);
+        chat_clear_impl(&st).unwrap();
+        assert!(lock_chat(&st).turns().is_empty());
+        assert!(chat::load_history(&st.store).is_empty());
+    }
+
+    #[test]
+    fn a_new_chat_waits_for_the_answer_to_finish() {
+        let (_d, st) = state(Settings::default());
+        lock_chat(&st).push_user("hi".into(), None);
+        st.chat_active.store(true, Ordering::SeqCst);
+        assert_eq!(chat_clear_impl(&st).unwrap_err(), "Wait for mouce to finish answering");
+        assert_eq!(lock_chat(&st).turns().len(), 1);
+    }
+
+    #[test]
+    fn saved_history_is_loaded_when_the_app_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = AppStore::open(dir.path().to_path_buf()).unwrap();
+        let turns =
+            vec![chat::Turn { role: chat::TurnRole::User, text: "hi".into(), looked: false }];
+        chat::save_history(&store, &turns).unwrap();
+        let on = AppState::new(
+            store,
+            Settings { history_enabled: true, ..Default::default() },
+            crate::secrets::Secrets::new("com.mouce.app.test.commands.unused"),
+        );
+        assert_eq!(lock_chat(&on).turns(), turns.as_slice());
+
+        let store = AppStore::open(dir.path().to_path_buf()).unwrap();
+        let off = AppState::new(
+            store,
+            Settings::default(),
+            crate::secrets::Secrets::new("com.mouce.app.test.commands.unused"),
+        );
+        assert!(lock_chat(&off).turns().is_empty(), "history off: start empty");
     }
 
     #[test]

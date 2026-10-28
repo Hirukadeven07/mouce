@@ -67,6 +67,7 @@ html.page-window body {
 }
 
 .page select,
+.page input[type="text"],
 .page input[type="password"] {
   box-sizing: border-box;
   max-width: 100%;

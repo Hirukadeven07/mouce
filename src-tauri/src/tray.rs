@@ -8,11 +8,15 @@ const SHOW_LABEL: &str = "Show mouce";
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let home_item = MenuItem::with_id(app, "home", "Open mouce", true, None::<&str>)?;
+    let chat_item = MenuItem::with_id(app, "chat", "Chat with mouce", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let pause_item = MenuItem::with_id(app, "pause", PAUSE_LABEL, true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&home_item, &settings_item, &pause_item, &separator, &quit_item])?;
+    let menu = Menu::with_items(
+        app,
+        &[&home_item, &chat_item, &settings_item, &pause_item, &separator, &quit_item],
+    )?;
 
     let pause_for_handler = pause_item.clone();
     let mut tray = TrayIconBuilder::with_id("mouce-tray")
@@ -21,6 +25,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "home" => mouce::open_home(app, mouce::HomeTab::Home),
+            "chat" => mouce::open_chat(app),
             "settings" => mouce::open_home(app, mouce::HomeTab::Settings),
             "pause" => toggle_mouce(app, &pause_for_handler),
             "quit" => app.exit(0),

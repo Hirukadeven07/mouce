@@ -1,9 +1,18 @@
 // The only module that talks to @tauri-apps/api.
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { HomeTabId, OllamaStatus, ProviderId, PullProgress, Settings, MouceState } from "./types";
+import type {
+  ChatReply,
+  ChatTurn,
+  HomeTabId,
+  OllamaStatus,
+  ProviderId,
+  PullProgress,
+  Settings,
+  MouceState,
+} from "./types";
 
 export type { UnlistenFn };
 
@@ -88,6 +97,34 @@ export function setAutostart(enabled: boolean): Promise<void> {
 
 export function finishFirstRun(): Promise<void> {
   return invoke<void>("finish_first_run");
+}
+
+export function openChat(): Promise<void> {
+  return invoke<void>("open_chat");
+}
+
+export function chatHistory(): Promise<ChatTurn[]> {
+  return invoke<ChatTurn[]>("chat_history");
+}
+
+// Asks mouce `text`, taking a picture of the screen first when `look` is set. Each piece
+// of the answer arrives in `onDelta` as it is written.
+export function chatSend(
+  text: string,
+  look: boolean,
+  onDelta: (chunk: string) => void,
+): Promise<ChatReply> {
+  const channel = new Channel<string>();
+  channel.onmessage = onDelta;
+  return invoke<ChatReply>("chat_send", { text, look, onDelta: channel });
+}
+
+export function chatStop(): Promise<void> {
+  return invoke<void>("chat_stop");
+}
+
+export function chatClear(): Promise<void> {
+  return invoke<void>("chat_clear");
 }
 
 export function onPullProgress(cb: (progress: PullProgress) => void): Promise<UnlistenFn> {

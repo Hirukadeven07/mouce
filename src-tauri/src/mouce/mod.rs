@@ -3,7 +3,7 @@
 pub mod position;
 
 use crate::settings::{self, Settings, MouceSize};
-use position::{clamp_to_monitors, default_position, keep_inside, Rect};
+use position::{clamp_to_monitors, default_position, keep_inside, panel_position, Rect};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -20,6 +20,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub const MOUCE_LABEL: &str = "mouce";
 pub const HOME_LABEL: &str = "home";
 pub const FIRSTRUN_LABEL: &str = "firstrun";
+pub const CHAT_LABEL: &str = "chat";
 
 /// Event to the webview: payload `"idle" | "thinking" | "looking" | "reminder"`.
 pub const MOUCE_STATE_EVENT: &str = "mouce-state";
@@ -31,6 +32,9 @@ pub const SETTINGS_CHANGED_EVENT: &str = "settings-changed";
 /// Extra logical pixels around the mouce so its glow is not clipped.
 const GLOW_PADDING: u32 = 12;
 const SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
+/// The chat panel's size and its distance from the mouce, in logical pixels.
+const CHAT_SIZE: (f64, f64) = (380.0, 520.0);
+const CHAT_GAP: f64 = 8.0;
 
 fn window_logical_size(size: MouceSize) -> u32 {
     size.px() + GLOW_PADDING
@@ -156,6 +160,9 @@ pub fn create(app: &AppHandle, settings: &Settings) -> tauri::Result<()> {
 
     window.set_position(PhysicalPosition::new(x, y))?;
     apply_no_focus_styles(&window)?;
+    // Screen pictures should show what is behind the mouce; without this they still work.
+    let excluded = crate::screen::exclude_from_capture(&window);
+    log_failure("keep the mouce out of screen pictures", excluded);
     watch_moves(app, &window);
     show_without_focus(&window)?;
     Ok(())
@@ -227,14 +234,11 @@ fn focus_existing(app: &AppHandle, label: &'static str) -> bool {
     true
 }
 
-/// Focuses the window `label`, creating it first if needed. `init_script` runs in a newly
-/// built window before the page loads.
-fn open_window(
+/// Focuses the window `label`, or builds it with `build` if it does not exist yet.
+fn open_or_build(
     app: &AppHandle,
     label: &'static str,
-    title: &'static str,
-    size: (f64, f64),
-    init_script: Option<String>,
+    build: impl FnOnce(&AppHandle) -> tauri::Result<()> + Send + 'static,
 ) {
     if focus_existing(app, label) {
         return;
@@ -248,8 +252,26 @@ fn open_window(
     // Windows can deadlock when a window is built from the event-loop thread; build elsewhere.
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        let built = build(&app);
+        drop(mark);
+        if let Err(e) = built {
+            eprintln!("could not open {label} window: {e}");
+        }
+    });
+}
+
+/// Focuses the window `label`, creating it first if needed. `init_script` runs in a newly
+/// built window before the page loads.
+fn open_window(
+    app: &AppHandle,
+    label: &'static str,
+    title: &'static str,
+    size: (f64, f64),
+    init_script: Option<String>,
+) {
+    open_or_build(app, label, move |app| {
         let mut builder =
-            WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
+            WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
                 .title(title)
                 .inner_size(size.0, size.1)
                 .min_inner_size(size.0 * 0.8, size.1 * 0.8)
@@ -258,12 +280,63 @@ fn open_window(
         if let Some(script) = init_script {
             builder = builder.initialization_script(&script);
         }
-        let built = builder.build();
-        drop(mark);
-        if let Err(e) = built {
-            eprintln!("could not open {label} window: {e}");
-        }
+        builder.build().map(|_| ())
     });
+}
+
+fn log_failure<E: std::fmt::Display>(what: &str, result: Result<(), E>) {
+    if let Err(e) = result {
+        eprintln!("could not {what}: {e}");
+    }
+}
+
+/// Where the chat panel goes: beside the mouce, on the mouce's monitor. `None` when the
+/// mouce or its monitor is not known (the panel then stays centred).
+fn chat_position(
+    app: &AppHandle,
+    chat: &tauri::WebviewWindow,
+) -> tauri::Result<Option<(i32, i32)>> {
+    let Some(mouce) = app.get_webview_window(MOUCE_LABEL) else { return Ok(None) };
+    let Some(monitor) = mouce.current_monitor()? else { return Ok(None) };
+    let (pos, size) = (mouce.outer_position()?, mouce.outer_size()?);
+    let anchor = Rect { x: pos.x, y: pos.y, w: size.width, h: size.height };
+    let panel = chat.outer_size()?;
+    let gap = (CHAT_GAP * monitor.scale_factor()).round() as i32;
+    Ok(Some(panel_position(anchor, panel.width, panel.height, gap, work_area_of(&monitor))))
+}
+
+fn build_chat(app: &AppHandle) -> tauri::Result<()> {
+    let window = WebviewWindowBuilder::new(app, CHAT_LABEL, WebviewUrl::App("index.html".into()))
+        .title("Chat with mouce")
+        .inner_size(CHAT_SIZE.0, CHAT_SIZE.1)
+        .min_inner_size(300.0, 360.0)
+        .always_on_top(true)
+        .center()
+        .visible(false)
+        .build()?;
+    if let Some((x, y)) = chat_position(app, &window)? {
+        window.set_position(PhysicalPosition::new(x, y))?;
+    }
+    // Screen pictures should show what is behind the panel; without this they still work.
+    let excluded = crate::screen::exclude_from_capture(&window);
+    log_failure("keep the chat out of screen pictures", excluded);
+    window.show()?;
+    window.set_focus()
+}
+
+/// Focuses the chat panel beside the mouce, creating it first if needed.
+pub fn open_chat(app: &AppHandle) {
+    open_or_build(app, CHAT_LABEL, build_chat);
+}
+
+/// The monitor the mouce is on (else the primary one), in physical pixels.
+pub fn screen_area(app: &AppHandle) -> Option<Rect> {
+    let monitor = app
+        .get_webview_window(MOUCE_LABEL)
+        .and_then(|w| w.current_monitor().ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten())?;
+    let (pos, size) = (monitor.position(), monitor.size());
+    Some(Rect { x: pos.x, y: pos.y, w: size.width, h: size.height })
 }
 
 /// The home window tabs Rust can ask for. The webview has more tabs; these are the ones
