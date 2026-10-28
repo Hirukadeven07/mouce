@@ -10,6 +10,7 @@ import type {
   OllamaStatus,
   ProviderId,
   PullProgress,
+  Selection,
   Settings,
   MouceState,
 } from "./types";
@@ -125,6 +126,40 @@ export function chatStop(): Promise<void> {
 
 export function chatClear(): Promise<void> {
   return invoke<void>("chat_clear");
+}
+
+// The circled part of the screen waiting to be asked about, as a small preview image.
+export function chatAttachment(): Promise<string | null> {
+  return invoke<string | null>("chat_attachment");
+}
+
+export function chatDiscardAttachment(): Promise<void> {
+  return invoke<void>("chat_discard_attachment");
+}
+
+export function onChatAttachment(cb: (preview: string | null) => void): Promise<UnlistenFn> {
+  return listen<string | null>("chat-attachment", (e) => cb(e.payload));
+}
+
+export function circleStart(): Promise<void> {
+  return invoke<void>("circle_start");
+}
+
+// The frozen screen the circle layer shows, as an image URL.
+export function circleFrame(): Promise<string> {
+  return invoke<string>("circle_frame");
+}
+
+export function circleReady(): Promise<void> {
+  return invoke<void>("circle_ready");
+}
+
+export function circleFinish(selection: Selection): Promise<void> {
+  return invoke<void>("circle_finish", { selection });
+}
+
+export function circleCancel(): Promise<void> {
+  return invoke<void>("circle_cancel");
 }
 
 export function onPullProgress(cb: (progress: PullProgress) => void): Promise<UnlistenFn> {

@@ -21,6 +21,7 @@ pub const MOUCE_LABEL: &str = "mouce";
 pub const HOME_LABEL: &str = "home";
 pub const FIRSTRUN_LABEL: &str = "firstrun";
 pub const CHAT_LABEL: &str = "chat";
+pub const CIRCLE_LABEL: &str = "circle";
 
 /// Event to the webview: payload `"idle" | "thinking" | "looking" | "reminder"`.
 pub const MOUCE_STATE_EVENT: &str = "mouce-state";
@@ -322,6 +323,23 @@ fn build_chat(app: &AppHandle) -> tauri::Result<()> {
     log_failure("keep the chat out of screen pictures", excluded);
     window.show()?;
     window.set_focus()
+}
+
+/// Builds the full-screen layer for circling, covering `area` (physical pixels). It stays
+/// hidden until its page has the frozen picture on screen (`circle_ready`).
+pub fn build_circle(app: &AppHandle, area: Rect) -> tauri::Result<tauri::WebviewWindow> {
+    let window = WebviewWindowBuilder::new(app, CIRCLE_LABEL, WebviewUrl::App("index.html".into()))
+        .title("Circle to look up")
+        .decorations(false)
+        .shadow(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(false)
+        .build()?;
+    window.set_position(PhysicalPosition::new(area.x, area.y))?;
+    window.set_size(PhysicalSize::new(area.w, area.h))?;
+    Ok(window)
 }
 
 /// Focuses the chat panel beside the mouce, creating it first if needed.

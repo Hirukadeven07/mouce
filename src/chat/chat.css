@@ -70,6 +70,12 @@ html.page-window #root {
   color: #6b6b6b;
 }
 
+.page .chat-empty-tip {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #8a8a8a;
+}
+
 .bubble-row {
   display: flex;
   flex-direction: column;
@@ -179,6 +185,53 @@ html.page-window #root {
   border: 1px solid #c9c5ba;
   border-radius: 8px;
   background: #fff;
+}
+
+.chat-attachment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf7;
+}
+
+.chat-attachment img {
+  flex: none;
+  max-width: 96px;
+  max-height: 64px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  object-fit: contain;
+  background: #fff;
+}
+
+.chat-attachment-text {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.page .chat-attachment-text p {
+  margin: 0;
+  color: #6b6b6b;
+}
+
+.page button.chat-attachment-remove {
+  margin-left: auto;
+  flex: none;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: #6b6b6b;
+}
+
+.chat-tools {
+  display: flex;
+  gap: 6px;
 }
 
 .page .chat-look-note {

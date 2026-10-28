@@ -1,0 +1,64 @@
+/* The full-screen layer for "Circle to look up". */
+html.circle-window-page,
+html.circle-window-page body {
+  margin: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.circle-layer {
+  position: fixed;
+  inset: 0;
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.circle-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* A light veil says "this is a picture, not your live screen". */
+.circle-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 25, 50, 0.18);
+}
+
+.circle-ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.circle-ink path {
+  fill: rgba(255, 255, 255, 0.12);
+  stroke: #fff;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 3px #1f3566) drop-shadow(0 0 6px rgba(31, 53, 102, 0.6));
+}
+
+.circle-hint {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(20, 28, 48, 0.85);
+  color: #fff;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  white-space: nowrap;
+  pointer-events: none;
+}

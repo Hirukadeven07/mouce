@@ -3,20 +3,54 @@ import { getAutostart, setAutostart } from "../lib/ipc";
 import { AiSettings } from "./AiSettings";
 import { errorText, useSettings } from "./useSettings";
 
+/** One keyboard shortcut: type it, then Save. Empty turns it off. */
+function ShortcutField(props: {
+  label: string;
+  example: string;
+  saved: string;
+  onSave: (keys: string) => void;
+}) {
+  const { label, example, saved, onSave } = props;
+  const id = useId();
+  const [keys, setKeys] = useState(saved);
+
+  // Show the saved shortcut whenever it changes (saved here, refused, or changed elsewhere).
+  useEffect(() => setKeys(saved), [saved]);
+
+  return (
+    <form
+      className="field"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(keys.trim());
+      }}
+    >
+      <label htmlFor={id}>{label}</label>
+      <div className="row">
+        <input
+          id={id}
+          type="text"
+          value={keys}
+          placeholder="Off"
+          spellCheck={false}
+          onChange={(e) => setKeys(e.target.value)}
+        />
+        <button type="submit" disabled={keys.trim() === saved}>
+          Save
+        </button>
+      </div>
+      <p className="muted">For example {example}. Leave it empty to turn the shortcut off.</p>
+    </form>
+  );
+}
+
 /** The Settings tab of the home window. */
 export function Settings() {
   const { settings, error, save } = useSettings();
-  const ids = { history: useId(), startup: useId(), chatKey: useId() };
-  const [chatKey, setChatKey] = useState("");
+  const ids = { history: useId(), startup: useId() };
   const [autostart, setAutostartState] = useState<boolean | null>(null);
   const [autostartError, setAutostartError] = useState<string | null>(null);
   const [autostartBusy, setAutostartBusy] = useState(false);
-
-  // Show the saved shortcut whenever it changes (saved here, refused, or changed elsewhere).
-  const savedChatKey = settings?.chat_hotkey;
-  useEffect(() => {
-    if (savedChatKey !== undefined) setChatKey(savedChatKey);
-  }, [savedChatKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,30 +101,18 @@ export function Settings() {
 
       <section>
         <h2>Shortcuts</h2>
-        <form
-          className="field"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save({ chat_hotkey: chatKey.trim() });
-          }}
-        >
-          <label htmlFor={ids.chatKey}>Open the chat from any app</label>
-          <div className="row">
-            <input
-              id={ids.chatKey}
-              type="text"
-              value={chatKey}
-              placeholder="Off"
-              spellCheck={false}
-              onChange={(e) => setChatKey(e.target.value)}
-            />
-            <button type="submit" disabled={chatKey.trim() === settings.chat_hotkey}>
-              Save
-            </button>
-          </div>
-          <p className="muted">For example Ctrl+Alt+M. Leave it empty to turn the shortcut off.</p>
-        </form>
-        <p>Circle to look up: Ctrl+Alt+Space</p>
+        <ShortcutField
+          label="Open the chat from any app"
+          example="Ctrl+Alt+M"
+          saved={settings.chat_hotkey}
+          onSave={(keys) => void save({ chat_hotkey: keys })}
+        />
+        <ShortcutField
+          label="Circle to look up"
+          example="Ctrl+Alt+O"
+          saved={settings.circle_hotkey}
+          onSave={(keys) => void save({ circle_hotkey: keys })}
+        />
       </section>
 
       <section>

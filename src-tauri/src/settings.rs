@@ -41,6 +41,7 @@ pub struct Settings {
     pub mouce_size: MouceSize,
     pub mouce_rotation: bool,
     pub mouce_position: Option<(i32, i32)>,
+    /// Starts "Circle to look up" from any app; blank turns it off.
     pub circle_hotkey: String,
     /// Opens the chat from any app; blank turns it off.
     pub chat_hotkey: String,
@@ -58,7 +59,7 @@ impl Default for Settings {
             mouce_size: MouceSize::Medium,
             mouce_rotation: true,
             mouce_position: None,
-            circle_hotkey: "Ctrl+Alt+Space".to_string(),
+            circle_hotkey: crate::hotkey::DEFAULT_CIRCLE_HOTKEY.to_string(),
             chat_hotkey: crate::hotkey::DEFAULT_CHAT_HOTKEY.to_string(),
             history_enabled: false,
             fallback_to_local: true,
@@ -67,14 +68,22 @@ impl Default for Settings {
     }
 }
 
+/// The circle shortcut before it was built. It was never used, and the Claude desktop app
+/// opens its chat with it, so settings that still hold it move to the new default.
+const OLD_CIRCLE_HOTKEY: &str = "Ctrl+Alt+Space";
+
 /// Missing or unreadable settings fall back to defaults.
 pub fn load(store: &AppStore) -> Settings {
-    store
+    let mut s: Settings = store
         .get_kv(SETTINGS_KEY)
         .ok()
         .flatten()
         .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if s.circle_hotkey == OLD_CIRCLE_HOTKEY {
+        s.circle_hotkey = crate::hotkey::DEFAULT_CIRCLE_HOTKEY.to_string();
+    }
+    s
 }
 
 pub fn save(store: &AppStore, s: &Settings) -> Result<(), StoreError> {
@@ -94,6 +103,15 @@ mod tests {
     }
 
     #[test]
+    fn the_old_circle_shortcut_moves_to_the_new_default() {
+        let (_d, s) = store();
+        s.set_kv(SETTINGS_KEY, r#"{"circle_hotkey":"Ctrl+Alt+Space"}"#).unwrap();
+        assert_eq!(load(&s).circle_hotkey, "Ctrl+Alt+O");
+        s.set_kv(SETTINGS_KEY, r#"{"circle_hotkey":"Ctrl+Shift+L"}"#).unwrap();
+        assert_eq!(load(&s).circle_hotkey, "Ctrl+Shift+L", "a chosen shortcut stays");
+    }
+
+    #[test]
     fn defaults_match_spec() {
         let d = Settings::default();
         assert_eq!(d.provider, ProviderId::Ollama);
@@ -103,7 +121,7 @@ mod tests {
         assert_eq!(d.mouce_size, MouceSize::Medium);
         assert!(d.mouce_rotation);
         assert_eq!(d.mouce_position, None);
-        assert_eq!(d.circle_hotkey, "Ctrl+Alt+Space");
+        assert_eq!(d.circle_hotkey, "Ctrl+Alt+O");
         assert_eq!(d.chat_hotkey, "Ctrl+Alt+M");
         assert!(!d.history_enabled);
         assert!(d.fallback_to_local);
