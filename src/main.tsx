@@ -26,6 +26,12 @@ async function root(): Promise<React.ReactElement> {
       const { ChatWindow } = await import("./chat/ChatWindow");
       return <ChatWindow />;
     }
+    case "circle": {
+      document.documentElement.classList.add("circle-window-page");
+      await import("./circle/circle.css");
+      const { CircleLayer } = await import("./circle/CircleLayer");
+      return <CircleLayer />;
+    }
     case "firstrun": {
       document.documentElement.classList.add("page-window");
       await import("./settings/settings.css");

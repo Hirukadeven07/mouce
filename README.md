@@ -42,14 +42,17 @@ your own API key.
   stream in as they're written, and you can stop one at any time.
 - **Look at my screen.** Press "Look at my screen" and mouce takes one picture of the screen
   it's on, so you can ask about whatever is in front of you.
+- **Circle to look up.** Press **Ctrl+Alt+O** in any app (or use the chat's Circle button)
+  and the screen freezes. Draw around anything, and only that part goes to the chat for you
+  to ask about. Esc or a right-click cancels.
 - **Shows what it's doing.** It sways gently when idle, moves faster while thinking, dims and
   pulses while looking, and glows when something needs your attention.
 - **Your choice of AI.** Run a local model on your own machine, or bring a key for OpenAI,
   Groq, Gemini or Claude. If the online AI fails, it can fall back to the local one.
 - **Guided first run.** Detects whether Ollama is installed and running, and downloads a
   starter model only after you confirm.
-- **Tray controls.** Open mouce or the chat, open Settings, pause or show mouce, or quit,
-  all from the system tray.
+- **Tray controls.** Open mouce or the chat, circle to look up, open Settings, pause or show
+  mouce, or quit, all from the system tray.
 - **Adjustable.** Small, medium or large size, sway on or off, and an optional start with
   Windows.
 
@@ -61,7 +64,7 @@ computer.
 | Guarantee | How it's enforced |
 | --- | --- |
 | No file, process, clipboard or input access | The app contains no file-write, process-launch, clipboard-write or input-synthesis code. An automated scan ([`src-tauri/tests/safety_scan.rs`](src-tauri/tests/safety_scan.rs)) fails the build if such APIs, extra capabilities or extra permissions appear. |
-| Looks only when you ask | mouce takes a picture of your screen only when you press "Look at my screen". The picture stays in memory, goes only to the AI you picked, and is never saved; saved chat history keeps text only. |
+| Looks only when you ask | mouce takes a picture of your screen only when you press "Look at my screen" or start Circle to look up. Pictures stay in memory and are never saved; only the part you circle (or the screen you chose to share) goes to the AI you picked, and saved chat history keeps text only. |
 | Writes only to its own folder | A single storage module writes to disk, and only inside the app's data folder. |
 | API keys stay secret | Keys are stored in Windows Credential Manager. They are written from Settings and read only by the Rust backend to reach the provider you picked; they never reach the web view. |
 | No surprise browsing | The only address the app ever opens in your browser is the Ollama download page. |
@@ -116,7 +119,7 @@ tray.
 - [x] **Skeleton and safety:** companion window, tray, settings, AI provider layer, secure key
       storage, capability lockdown, safety scan, first run
 - [x] **Chat:** a panel next to mouce with streaming answers and "Look at my screen"
-- [ ] **Circle to look up:** draw around anything on screen and ask about it
+- [x] **Circle to look up:** draw around anything on screen and ask about it
 - [ ] **Dictionary:** Ctrl + right-click a word for its meaning, with an offline fallback
 - [ ] **Calendar and reminders:** add events in plain language, confirm before saving, and get
       gentle reminders

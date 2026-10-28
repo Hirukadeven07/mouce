@@ -5,15 +5,15 @@
 //! API key: keys go in, and are only read inside Rust to talk to the chosen provider.
 
 use crate::ai::{self, ChatMessage, ChatRequest, ImageInput, Role};
-use crate::chat::{self, Conversation, Turn};
+use crate::chat::{self, Conversation, Snip, Turn};
 use crate::ollama_setup::{self, OllamaStatus, PullProgress};
 use crate::settings::{self, ProviderId, Settings};
-use crate::{hotkey, mouce, screen, AppState};
+use crate::{circle, hotkey, mouce, screen, AppState};
 use serde::Serialize;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Notify;
@@ -94,7 +94,8 @@ pub fn update_settings_impl(
     next.mouce_position = current.mouce_position;
     next.first_run_done = current.first_run_done;
     next.chat_hotkey = next.chat_hotkey.trim().to_string();
-    hotkey::parse(&next.chat_hotkey)?;
+    next.circle_hotkey = next.circle_hotkey.trim().to_string();
+    hotkey::check_distinct(&next.chat_hotkey, &next.circle_hotkey)?;
     if next.history_enabled != current.history_enabled {
         let chat = lock_chat(state);
         let result = if next.history_enabled {
@@ -110,6 +111,24 @@ pub fn update_settings_impl(
     Ok((next, size_changed))
 }
 
+/// Moves each shortcut that changed (`(old, new)`) to its new keys. If one cannot move, the
+/// ones already moved go back, and the error says why.
+fn move_hotkeys(app: &AppHandle, moves: &[(String, String)]) -> Result<(), String> {
+    for (i, (old, new)) in moves.iter().enumerate() {
+        if let Err(e) = hotkey::replace(app, old, new) {
+            undo_hotkeys(app, &moves[..i]);
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
+fn undo_hotkeys(app: &AppHandle, moves: &[(String, String)]) {
+    for (old, new) in moves.iter().rev() {
+        let _ = hotkey::replace(app, new, old);
+    }
+}
+
 #[tauri::command(async)]
 pub fn get_settings(state: State<'_, AppState>) -> Settings {
     get_settings_impl(&state)
@@ -121,17 +140,19 @@ pub fn update_settings(
     state: State<'_, AppState>,
     settings: Settings,
 ) -> Result<Settings, String> {
-    let old_hotkey = get_settings_impl(&state).chat_hotkey;
-    let hotkey_changed = old_hotkey.trim() != settings.chat_hotkey.trim();
-    if hotkey_changed {
-        hotkey::replace(&app, &old_hotkey, &settings.chat_hotkey)?;
-    }
-    let new_hotkey = settings.chat_hotkey.clone();
+    hotkey::check_distinct(&settings.chat_hotkey, &settings.circle_hotkey)?;
+    let current = get_settings_impl(&state);
+    let moves: Vec<(String, String)> = [
+        (current.chat_hotkey, settings.chat_hotkey.clone()),
+        (current.circle_hotkey, settings.circle_hotkey.clone()),
+    ]
+    .into_iter()
+    .filter(|(old, new)| old.trim() != new.trim())
+    .collect();
+    move_hotkeys(&app, &moves)?;
     let (saved, size_changed) = update_settings_impl(&state, settings).inspect_err(|_| {
-        if hotkey_changed {
-            // Not saved, so the old shortcut stays the one that works.
-            let _ = hotkey::replace(&app, &new_hotkey, &old_hotkey);
-        }
+        // Not saved, so the old shortcuts stay the ones that work.
+        undo_hotkeys(&app, &moves);
     })?;
     let _ = app.emit(mouce::SETTINGS_CHANGED_EVENT, &saved);
     if size_changed {
@@ -321,7 +342,42 @@ async fn ask_with_fallback(
     }
 }
 
-/// Adds the user's question (with a screen picture when `screen` is given) and streams
+/// The circled area a question is about. If the question goes unanswered, the area goes
+/// back to wait for the next question, unless the user has circled a new one meanwhile.
+struct TakenSnip<'a> {
+    slot: &'a Mutex<Option<Snip>>,
+    snip: Option<Snip>,
+}
+
+impl<'a> TakenSnip<'a> {
+    fn take(slot: &'a Mutex<Option<Snip>>) -> TakenSnip<'a> {
+        let snip = slot.lock().unwrap_or_else(|e| e.into_inner()).take();
+        TakenSnip { slot, snip }
+    }
+
+    fn none(slot: &'a Mutex<Option<Snip>>) -> TakenSnip<'a> {
+        TakenSnip { slot, snip: None }
+    }
+
+    fn image(&self) -> Option<ImageInput> {
+        self.snip.as_ref().map(|s| s.image.clone())
+    }
+
+    fn answered(&mut self) {
+        self.snip = None;
+    }
+}
+
+impl Drop for TakenSnip<'_> {
+    fn drop(&mut self) {
+        if let Some(snip) = self.snip.take() {
+            self.slot.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert(snip);
+        }
+    }
+}
+
+/// Adds the user's question (with a screen picture when `screen` is given, or else the
+/// circled area waiting to be asked about) and streams
 /// mouce's answer to `on_delta`. A failed question is taken back out of the chat so it
 /// can be asked again; Stop keeps whatever was already written.
 pub async fn chat_send_impl<F>(
@@ -336,8 +392,14 @@ where
     let Some(_slot) = BusySlot::try_take(&state.chat_active) else {
         return Err("mouce is still answering".to_string());
     };
+    let mut circled = if screen.is_some() {
+        TakenSnip::none(&state.circled)
+    } else {
+        TakenSnip::take(&state.circled)
+    };
     let text = match text.trim() {
         "" if screen.is_some() => chat::LOOK_QUESTION.to_string(),
+        "" if circled.snip.is_some() => chat::CIRCLE_QUESTION.to_string(),
         "" => return Err("Type a question first".to_string()),
         t => t.to_string(),
     };
@@ -352,7 +414,10 @@ where
         None => None,
     };
     let settings = get_settings_impl(state);
-    lock_chat(state).push_user(text, screen);
+    match (screen, circled.image()) {
+        (None, Some(image)) => lock_chat(state).push_user_circled(text, image),
+        (screen, _) => lock_chat(state).push_user(text, screen),
+    }
 
     let mut written = String::new();
     let outcome = {
@@ -371,6 +436,7 @@ where
         match outcome {
             Some(Ok((text, used_local))) => {
                 chat.push_assistant(text.clone());
+                circled.answered();
                 ChatReply { text, stopped: false, used_local }
             }
             Some(Err(e)) => {
@@ -382,6 +448,7 @@ where
                     chat.drop_unanswered();
                 } else {
                     chat.push_assistant(written.clone());
+                    circled.answered();
                 }
                 ChatReply { text: written, stopped: true, used_local: false }
             }
@@ -462,6 +529,59 @@ pub fn chat_clear(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn open_chat(app: AppHandle) {
     mouce::open_chat(&app);
+}
+
+/// The preview of the circled area waiting to be asked about, if there is one.
+#[tauri::command(async)]
+pub fn chat_attachment(state: State<'_, AppState>) -> Option<String> {
+    circle::attachment_impl(&state)
+}
+
+#[tauri::command(async)]
+pub fn chat_discard_attachment(app: AppHandle, state: State<'_, AppState>) {
+    circle::discard_impl(&state);
+    circle::announce_attachment(&app, None);
+}
+
+// ---- circle to look up ----
+
+#[tauri::command]
+pub fn circle_start(app: AppHandle) {
+    circle::start(&app);
+}
+
+/// The frozen screen for the circling layer to show.
+#[tauri::command(async)]
+pub fn circle_frame(state: State<'_, AppState>) -> Result<String, String> {
+    circle::frame_image_impl(&state)
+}
+
+/// The layer shows the frozen screen: bring it up over everything.
+#[tauri::command]
+pub fn circle_ready(app: AppHandle) -> Result<(), String> {
+    let layer = app.get_webview_window(mouce::CIRCLE_LABEL).ok_or("The circle layer is gone")?;
+    layer.show().map_err(|e| e.to_string())?;
+    layer.set_focus().map_err(|e| e.to_string())
+}
+
+/// The user circled `selection`: keep that part, close the layer and open the chat to ask
+/// about it.
+#[tauri::command(async)]
+pub fn circle_finish(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    selection: screen::Selection,
+) -> Result<(), String> {
+    let preview = circle::finish_impl(&state, selection)?;
+    circle::close_layer(&app);
+    mouce::open_chat(&app);
+    circle::announce_attachment(&app, Some(preview));
+    Ok(())
+}
+
+#[tauri::command]
+pub fn circle_cancel(app: AppHandle) {
+    circle::close_layer(&app);
 }
 
 // ---- Ollama ----
@@ -1053,6 +1173,65 @@ mod tests {
         assert!(lock_chat(&st).turns()[0].looked);
     }
 
+    fn circle_something(st: &AppState) {
+        *st.circled.lock().unwrap() = Some(Snip {
+            image: ImageInput { mime: "image/jpeg".into(), base64: "Q0lSQ0xF".into() },
+            thumbnail: "data:image/jpeg;base64,VEhVTUI=".into(),
+        });
+    }
+
+    #[tokio::test]
+    async fn a_circled_area_is_asked_about_once_with_a_default_question() {
+        let server = MockServer::start().await;
+        let body = ndjson_reply("A logo");
+        mount_chat(&server, ResponseTemplate::new(200).set_body_string(body)).await;
+        let (_d, st) = state_for(&server);
+        circle_something(&st);
+        chat_send_impl(&st, "", no_look(), &mut |_| {}).await.unwrap();
+        let body = &sent_bodies(&server).await[0];
+        assert_eq!(body["messages"][1]["content"], chat::CIRCLE_QUESTION);
+        assert_eq!(body["messages"][1]["images"], serde_json::json!(["Q0lSQ0xF"]));
+        assert!(lock_chat(&st).turns()[0].circled);
+        assert!(st.circled.lock().unwrap().is_none(), "used up by the answer");
+    }
+
+    #[tokio::test]
+    async fn a_circled_area_comes_back_when_the_question_fails() {
+        let server = MockServer::start().await;
+        mount_chat(&server, ResponseTemplate::new(500).set_body_string("boom")).await;
+        let (_d, st) = state_for(&server);
+        circle_something(&st);
+        chat_send_impl(&st, "what is it?", no_look(), &mut |_| {}).await.unwrap_err();
+        assert!(st.circled.lock().unwrap().is_some(), "still waiting to be asked about");
+        assert!(lock_chat(&st).turns().is_empty());
+    }
+
+    #[tokio::test]
+    async fn looking_at_the_whole_screen_leaves_a_circled_area_waiting() {
+        let server = MockServer::start().await;
+        let body = ndjson_reply("A desktop");
+        mount_chat(&server, ResponseTemplate::new(200).set_body_string(body)).await;
+        let (_d, st) = state_for(&server);
+        circle_something(&st);
+        chat_send_impl(&st, "", look(), &mut |_| {}).await.unwrap();
+        let body = &sent_bodies(&server).await[0];
+        assert_eq!(body["messages"][1]["images"], serde_json::json!(["U0NSRUVO"]));
+        assert!(st.circled.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn update_settings_refuses_one_shortcut_for_both_features() {
+        let (_d, st) = state(Settings::default());
+        let same = Settings {
+            chat_hotkey: "Ctrl+Alt+M".into(),
+            circle_hotkey: " ctrl+alt+m ".into(),
+            ..Default::default()
+        };
+        assert!(update_settings_impl(&st, same).unwrap_err().contains("different shortcuts"));
+        let spaced = Settings { circle_hotkey: " Ctrl+Alt+L ".into(), ..Default::default() };
+        assert_eq!(update_settings_impl(&st, spaced).unwrap().0.circle_hotkey, "Ctrl+Alt+L");
+    }
+
     #[tokio::test]
     async fn a_blank_question_is_refused_before_any_request() {
         let server = MockServer::start().await;
@@ -1213,7 +1392,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = AppStore::open(dir.path().to_path_buf()).unwrap();
         let turns =
-            vec![chat::Turn { role: chat::TurnRole::User, text: "hi".into(), looked: false }];
+            vec![chat::Turn {
+                role: chat::TurnRole::User,
+                text: "hi".into(),
+                looked: false,
+                circled: false,
+            }];
         chat::save_history(&store, &turns).unwrap();
         let on = AppState::new(
             store,

@@ -22,6 +22,7 @@ export interface Settings {
   mouce_size: MouceSize;
   mouce_rotation: boolean;
   mouce_position: [number, number] | null;
+  /** Starts "Circle to look up" from any app; empty turns it off. */
   circle_hotkey: string;
   /** Opens the chat from any app; empty turns it off. */
   chat_hotkey: string;
@@ -44,6 +45,16 @@ export interface ChatTurn {
   text: string;
   /** The user shared their screen with this message. */
   looked: boolean;
+  /** The user circled part of their screen for this message. */
+  circled: boolean;
+}
+
+/** Part of the screen as fractions (0 to 1) of its width and height. */
+export interface Selection {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface ChatReply {

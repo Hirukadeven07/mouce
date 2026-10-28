@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod chat;
+pub mod circle;
 pub mod commands;
 pub mod hotkey;
 pub mod ollama_setup;
@@ -32,6 +33,12 @@ pub struct AppState {
     pub chat_active: AtomicBool,
     /// Stops the answer being written, if there is one.
     pub chat_stop: Mutex<Option<Arc<tokio::sync::Notify>>>,
+    /// Set from the moment circling starts until its layer closes.
+    pub circle_active: AtomicBool,
+    /// The frozen screen while the user circles part of it.
+    pub circle_frame: Mutex<Option<screen::Frame>>,
+    /// The circled part waiting to be asked about in the chat.
+    pub circled: Mutex<Option<chat::Snip>>,
 }
 
 impl AppState {
@@ -47,6 +54,9 @@ impl AppState {
             chat: Mutex::new(chat::Conversation::from_turns(history)),
             chat_active: AtomicBool::new(false),
             chat_stop: Mutex::new(None),
+            circle_active: AtomicBool::new(false),
+            circle_frame: Mutex::new(None),
+            circled: Mutex::new(None),
         }
     }
 }
@@ -81,6 +91,19 @@ fn on_second_launch(app: &tauri::AppHandle) {
     }
 }
 
+fn on_shortcut(app: &tauri::AppHandle, pressed: &tauri_plugin_global_shortcut::Shortcut) {
+    let Some(state) = app.try_state::<AppState>() else { return };
+    let (chat_keys, circle_keys) = {
+        let s = state.settings.lock().unwrap_or_else(|e| e.into_inner());
+        (s.chat_hotkey.clone(), s.circle_hotkey.clone())
+    };
+    if hotkey::matches(&circle_keys, pressed) {
+        circle::start(app);
+    } else if hotkey::matches(&chat_keys, pressed) {
+        mouce::open_chat(app);
+    }
+}
+
 /// Opens the data folder and creates the windows. Any error is reported by the caller.
 fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = app.path().app_data_dir()?;
@@ -91,9 +114,11 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(AppState::new(store, settings.clone(), Secrets::new("com.mouce.app")));
     mouce::create(app.handle(), &settings)?;
     tray::build(app.handle())?;
-    // Another app may already own the shortcut; mouce still works without it.
-    if let Err(e) = hotkey::register(app.handle(), &settings.chat_hotkey) {
-        eprintln!("could not set up the chat shortcut: {e}");
+    // Another app may already own a shortcut; mouce still works without it.
+    for (what, keys) in [("chat", &settings.chat_hotkey), ("circle", &settings.circle_hotkey)] {
+        if let Err(e) = hotkey::register(app.handle(), keys) {
+            eprintln!("could not set up the {what} shortcut: {e}");
+        }
     }
     if !settings.first_run_done {
         mouce::open_firstrun(app.handle());
@@ -118,12 +143,12 @@ pub fn run() -> Result<(), String> {
             None,
         ))
         .plugin(tauri_plugin_opener::init())
-        // Only the chat shortcut is ever registered (see `hotkey`), so any press opens the chat.
+        // Only the chat and circle shortcuts are ever registered (see `hotkey`).
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        mouce::open_chat(app);
+                        on_shortcut(app, shortcut);
                     }
                 })
                 .build(),
@@ -148,6 +173,13 @@ pub fn run() -> Result<(), String> {
             commands::chat_stop,
             commands::chat_clear,
             commands::open_chat,
+            commands::chat_attachment,
+            commands::chat_discard_attachment,
+            commands::circle_start,
+            commands::circle_frame,
+            commands::circle_ready,
+            commands::circle_finish,
+            commands::circle_cancel,
         ])
         .setup(|app| {
             // A setup error would make Tauri panic, which under the windows subsystem is a

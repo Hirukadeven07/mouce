@@ -15,7 +15,7 @@ const baseSettings: Settings = {
   mouce_size: "medium",
   mouce_rotation: true,
   mouce_position: null,
-  circle_hotkey: "Ctrl+Alt+Space",
+  circle_hotkey: "Ctrl+Alt+O",
   chat_hotkey: "Ctrl+Alt+M",
   history_enabled: false,
   fallback_to_local: true,
@@ -85,11 +85,14 @@ describe("Settings", () => {
     vi.mocked(ipc.hasApiKey).mockResolvedValue(true);
     await renderSettings();
     await screen.findByText("Key saved");
-    // Every field but the chat shortcut (which shows its saved value) must be empty.
-    const shortcut = screen.getByLabelText("Open the chat from any app");
+    // Every field but the shortcuts (which show their saved keys) must be empty.
+    const shortcuts = [
+      screen.getByLabelText("Open the chat from any app"),
+      screen.getByLabelText("Circle to look up"),
+    ];
     const fields = [
       ...document.querySelectorAll<HTMLInputElement>("input:not([type=checkbox]):not([type=radio])"),
-    ].filter((f) => f !== shortcut);
+    ].filter((f) => !shortcuts.includes(f));
     expect(fields.length).toBeGreaterThan(0);
     fields.forEach((f) => expect(f.value).toBe(""));
   });
@@ -192,7 +195,7 @@ describe("Settings", () => {
     await renderSettings();
     const input = screen.getByLabelText("Open the chat from any app");
     expect(input).toHaveValue("Ctrl+Alt+M");
-    const save = screen.getByRole("button", { name: "Save" });
+    const save = within(input.closest("form")!).getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
     await user.clear(input);
     await user.type(input, " Ctrl+Shift+K ");
@@ -201,6 +204,18 @@ describe("Settings", () => {
       expect.objectContaining({ chat_hotkey: "Ctrl+Shift+K" }),
     );
     await waitFor(() => expect(save).toBeDisabled());
+  });
+
+  it("saves a new circle shortcut", async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+    const input = screen.getByLabelText("Circle to look up");
+    expect(input).toHaveValue("Ctrl+Alt+O");
+    await user.clear(input);
+    await user.type(input, "Ctrl+Shift+L{Enter}");
+    expect(ipc.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ circle_hotkey: "Ctrl+Shift+L", chat_hotkey: "Ctrl+Alt+M" }),
+    );
   });
 
   it("shows why a chat shortcut was refused and keeps the saved one", async () => {

@@ -1,5 +1,5 @@
 {
   "identifier": "default",
-  "windows": ["mouce", "home", "firstrun", "chat"],
+  "windows": ["mouce", "home", "firstrun", "chat", "circle"],
   "permissions": ["core:default", "core:window:allow-start-dragging"]
 }
