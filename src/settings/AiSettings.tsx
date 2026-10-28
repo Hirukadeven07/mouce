@@ -15,7 +15,7 @@ import { errorText, useSettings } from "./useSettings";
 
 export const DEFAULT_LOCAL_MODEL = "gemma3:4b";
 
-const PROVIDERS: Array<{ id: ProviderId; label: string }> = [
+export const PROVIDERS: Array<{ id: ProviderId; label: string }> = [
   { id: "ollama", label: "Local (Ollama)" },
   { id: "openai", label: "OpenAI" },
   { id: "groq", label: "Groq" },

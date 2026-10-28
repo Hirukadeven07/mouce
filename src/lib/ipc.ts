@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { OllamaStatus, ProviderId, PullProgress, Settings, MouceState } from "./types";
+import type { HomeTabId, OllamaStatus, ProviderId, PullProgress, Settings, MouceState } from "./types";
 
 export type { UnlistenFn };
 
@@ -25,6 +25,16 @@ export function startDragging(): Promise<void> {
 
 export function onMouceState(cb: (state: MouceState) => void): Promise<UnlistenFn> {
   return listen<MouceState>("mouce-state", (e) => cb(e.payload));
+}
+
+// The tab the home window should open on, set by Rust before the page loads (see
+// `mouce::open_home`). Anything unexpected falls back to Home.
+export function initialHomeTab(): HomeTabId | undefined {
+  return (window as { __MOUCE_HOME_TAB?: HomeTabId }).__MOUCE_HOME_TAB;
+}
+
+export function onHomeTab(cb: (tab: HomeTabId) => void): Promise<UnlistenFn> {
+  return listen<HomeTabId>("home-tab", (e) => cb(e.payload));
 }
 
 export function onSettingsChanged(cb: (settings: Settings) => void): Promise<UnlistenFn> {

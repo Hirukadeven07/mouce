@@ -1,18 +1,12 @@
 import { useEffect, useId, useState } from "react";
 import { getAutostart, setAutostart } from "../lib/ipc";
-import type { MouceSize } from "../lib/types";
 import { AiSettings } from "./AiSettings";
 import { errorText, useSettings } from "./useSettings";
 
-const SIZES: Array<{ id: MouceSize; label: string }> = [
-  { id: "small", label: "Small" },
-  { id: "medium", label: "Medium" },
-  { id: "large", label: "Large" },
-];
-
+/** The Settings tab of the home window. */
 export function Settings() {
   const { settings, error, save } = useSettings();
-  const ids = { size: useId(), rotate: useId(), history: useId(), startup: useId() };
+  const ids = { history: useId(), startup: useId() };
   const [autostart, setAutostartState] = useState<boolean | null>(null);
   const [autostartError, setAutostartError] = useState<string | null>(null);
   const [autostartBusy, setAutostartBusy] = useState(false);
@@ -49,47 +43,19 @@ export function Settings() {
 
   if (!settings) {
     return (
-      <main className="page">
+      <div className="page">
         <p role="status">{error ?? "Loading…"}</p>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="page">
-      <h1>mouce settings</h1>
+    <div className="page">
       {error && <p role="alert" className="error">{error}</p>}
 
       <section>
         <h2>AI</h2>
         <AiSettings />
-      </section>
-
-      <section>
-        <h2>Appearance</h2>
-        <div className="field">
-          <label htmlFor={ids.size}>Size</label>
-          <select
-            id={ids.size}
-            value={settings.mouce_size}
-            onChange={(e) => void save({ mouce_size: e.target.value as MouceSize })}
-          >
-            {SIZES.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="check">
-          <input
-            id={ids.rotate}
-            type="checkbox"
-            checked={settings.mouce_rotation}
-            onChange={(e) => void save({ mouce_rotation: e.target.checked })}
-          />
-          <label htmlFor={ids.rotate}>Sway</label>
-        </div>
       </section>
 
       <section>
@@ -128,6 +94,6 @@ export function Settings() {
         </div>
         {autostartError && <p role="alert" className="error">{autostartError}</p>}
       </section>
-    </main>
+    </div>
   );
 }

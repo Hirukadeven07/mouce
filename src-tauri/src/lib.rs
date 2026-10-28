@@ -41,21 +41,21 @@ impl AppState {
 #[derive(Debug, PartialEq, Eq)]
 enum SecondLaunch {
     FirstRun,
-    Settings,
+    Home,
 }
 
 /// Until first run is finished, launching again must lead back to the welcome window,
-/// not to Settings.
+/// not to the home window.
 fn second_launch_target(first_run_done: bool) -> SecondLaunch {
     if first_run_done {
-        SecondLaunch::Settings
+        SecondLaunch::Home
     } else {
         SecondLaunch::FirstRun
     }
 }
 
 fn on_second_launch(app: &tauri::AppHandle) {
-    // Still starting up (no state yet): Settings is the safe answer, and it does nothing
+    // Still starting up (no state yet): Home is the safe answer, and it does nothing
     // until the app is ready.
     let first_run_done = app
         .try_state::<AppState>()
@@ -63,7 +63,7 @@ fn on_second_launch(app: &tauri::AppHandle) {
         .unwrap_or(true);
     match second_launch_target(first_run_done) {
         SecondLaunch::FirstRun => mouce::open_firstrun(app),
-        SecondLaunch::Settings => mouce::open_settings(app),
+        SecondLaunch::Home => mouce::open_home(app, mouce::HomeTab::Home),
     }
 }
 
@@ -143,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn second_launch_after_first_run_opens_settings() {
-        assert_eq!(second_launch_target(true), SecondLaunch::Settings);
+    fn second_launch_after_first_run_opens_home() {
+        assert_eq!(second_launch_target(true), SecondLaunch::Home);
     }
 }

@@ -58,10 +58,10 @@ fn log_best_effort<E: std::fmt::Display>(
     }
 }
 
-/// The mouce was clicked (not dragged). In M1 this opens Settings.
+/// The mouce was clicked (not dragged): open the home window.
 #[tauri::command]
 pub fn mouce_clicked(app: AppHandle) {
-    mouce::open_settings(&app);
+    mouce::open_home(&app, mouce::HomeTab::Home);
 }
 
 // ---- settings ----

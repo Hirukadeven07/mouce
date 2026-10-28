@@ -1,4 +1,4 @@
-/* Shared by the Settings and first-run windows. */
+/* Shared by the home and first-run windows. */
 html.page-window,
 html.page-window body {
   margin: 0;
@@ -101,17 +101,18 @@ html.page-window body {
 }
 
 .page button.primary {
-  background: #f5c542;
-  border-color: #e0b034;
+  background: #1f3566;
+  border-color: #1f3566;
+  color: #fff;
   font-weight: 600;
 }
 
 .page button.primary:hover:not(:disabled) {
-  background: #f0bb2c;
+  background: #2a4580;
 }
 
 .page :focus-visible {
-  outline: 2px solid #2c6fd1;
+  outline: 2px solid #1f3566;
   outline-offset: 2px;
 }
 

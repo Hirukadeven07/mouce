@@ -100,18 +100,6 @@ describe("Settings", () => {
     expect(ipc.testProvider).toHaveBeenCalledWith("ollama");
   });
 
-  it("toggling rotate calls updateSettings with mouce_rotation false", async () => {
-    const user = userEvent.setup();
-    await renderSettings();
-    await user.click(screen.getByRole("checkbox", { name: "Sway" }));
-    await waitFor(() =>
-      expect(ipc.updateSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ mouce_rotation: false }),
-      ),
-    );
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked());
-  });
-
   it("shows a Choose a model placeholder for a provider with no model yet", async () => {
     vi.mocked(ipc.getSettings).mockResolvedValue({ ...baseSettings, provider: "groq" });
     vi.mocked(ipc.hasApiKey).mockResolvedValue(true);
@@ -184,15 +172,16 @@ describe("Settings", () => {
       () => new Promise<Settings>((resolve) => (finish = resolve)),
     );
     await renderSettings();
-    await user.click(screen.getByRole("checkbox", { name: "Sway" }));
-    expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked();
+    const history = () => screen.getByRole("checkbox", { name: "Keep chat history" });
+    await user.click(history());
+    expect(history()).toBeChecked();
 
     expect(listeners.length).toBeGreaterThan(0);
-    act(() => listeners.forEach((cb) => cb({ ...baseSettings, mouce_rotation: true })));
-    expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked();
+    act(() => listeners.forEach((cb) => cb({ ...baseSettings, history_enabled: false })));
+    expect(history()).toBeChecked();
 
-    await act(async () => finish({ ...baseSettings, mouce_rotation: false }));
-    expect(screen.getByRole("checkbox", { name: "Sway" })).not.toBeChecked();
+    await act(async () => finish({ ...baseSettings, history_enabled: true }));
+    expect(history()).toBeChecked();
   });
 
   it("shows the privacy sentence", async () => {

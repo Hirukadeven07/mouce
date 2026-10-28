@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{
-    AppHandle, LogicalSize, Manager, Monitor, PhysicalPosition, PhysicalSize, WebviewUrl,
+    AppHandle, Emitter, LogicalSize, Manager, Monitor, PhysicalPosition, PhysicalSize, WebviewUrl,
     WebviewWindowBuilder, WindowEvent,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -18,11 +18,13 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 pub const MOUCE_LABEL: &str = "mouce";
-pub const SETTINGS_LABEL: &str = "settings";
+pub const HOME_LABEL: &str = "home";
 pub const FIRSTRUN_LABEL: &str = "firstrun";
 
 /// Event to the webview: payload `"idle" | "thinking" | "looking" | "reminder"`.
 pub const MOUCE_STATE_EVENT: &str = "mouce-state";
+/// Event to the home window: payload is the tab to show (see `HomeTab`).
+pub const HOME_TAB_EVENT: &str = "home-tab";
 /// Event to the webview: payload is the full `Settings`.
 pub const SETTINGS_CHANGED_EVENT: &str = "settings-changed";
 
@@ -225,8 +227,15 @@ fn focus_existing(app: &AppHandle, label: &'static str) -> bool {
     true
 }
 
-/// Focuses the window `label`, creating it first if needed.
-fn open_window(app: &AppHandle, label: &'static str, title: &'static str, size: (f64, f64)) {
+/// Focuses the window `label`, creating it first if needed. `init_script` runs in a newly
+/// built window before the page loads.
+fn open_window(
+    app: &AppHandle,
+    label: &'static str,
+    title: &'static str,
+    size: (f64, f64),
+    init_script: Option<String>,
+) {
     if focus_existing(app, label) {
         return;
     }
@@ -239,12 +248,17 @@ fn open_window(app: &AppHandle, label: &'static str, title: &'static str, size: 
     // Windows can deadlock when a window is built from the event-loop thread; build elsewhere.
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let built = WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
-            .title(title)
-            .inner_size(size.0, size.1)
-            .decorations(true)
-            .center()
-            .build();
+        let mut builder =
+            WebviewWindowBuilder::new(&app, label, WebviewUrl::App("index.html".into()))
+                .title(title)
+                .inner_size(size.0, size.1)
+                .min_inner_size(size.0 * 0.8, size.1 * 0.8)
+                .decorations(true)
+                .center();
+        if let Some(script) = init_script {
+            builder = builder.initialization_script(&script);
+        }
+        let built = builder.build();
         drop(mark);
         if let Err(e) = built {
             eprintln!("could not open {label} window: {e}");
@@ -252,14 +266,38 @@ fn open_window(app: &AppHandle, label: &'static str, title: &'static str, size: 
     });
 }
 
-/// Focuses the Settings window, creating it first if needed.
-pub fn open_settings(app: &AppHandle) {
-    open_window(app, SETTINGS_LABEL, "mouce Settings", (480.0, 640.0));
+/// The home window tabs Rust can ask for. The webview has more tabs; these are the ones
+/// the tray and a second launch open directly.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HomeTab {
+    Home,
+    Settings,
+}
+
+impl HomeTab {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HomeTab::Home => "home",
+            HomeTab::Settings => "settings",
+        }
+    }
+}
+
+/// Tells a newly built home window which tab to start on. Only fixed tab names go in.
+fn initial_tab_script(tab: HomeTab) -> String {
+    format!("window.__MOUCE_HOME_TAB = \"{}\";", tab.as_str())
+}
+
+/// Focuses the home window on `tab`, creating it first if needed.
+pub fn open_home(app: &AppHandle, tab: HomeTab) {
+    // An open window switches tabs on this event; a new one starts on the tab from its script.
+    let _ = app.emit_to(HOME_LABEL, HOME_TAB_EVENT, tab.as_str());
+    open_window(app, HOME_LABEL, "mouce", (780.0, 600.0), Some(initial_tab_script(tab)));
 }
 
 /// Focuses the first-run welcome window, creating it first if needed.
 pub fn open_firstrun(app: &AppHandle) {
-    open_window(app, FIRSTRUN_LABEL, "Welcome to mouce", (520.0, 600.0));
+    open_window(app, FIRSTRUN_LABEL, "Welcome to mouce", (520.0, 600.0), None);
 }
 
 #[cfg(test)]
@@ -269,18 +307,32 @@ mod tests {
     #[test]
     fn a_window_can_only_be_marked_once_until_finished() {
         let opening = OpeningWindows::default();
-        assert!(opening.try_begin(SETTINGS_LABEL));
-        assert!(!opening.try_begin(SETTINGS_LABEL), "second request while building");
+        assert!(opening.try_begin(HOME_LABEL));
+        assert!(!opening.try_begin(HOME_LABEL), "second request while building");
         assert!(opening.try_begin(FIRSTRUN_LABEL), "other windows are independent");
-        opening.finish(SETTINGS_LABEL);
-        assert!(opening.try_begin(SETTINGS_LABEL), "free again after the build finished");
+        opening.finish(HOME_LABEL);
+        assert!(opening.try_begin(HOME_LABEL), "free again after the build finished");
         assert!(!opening.try_begin(FIRSTRUN_LABEL));
     }
 
     #[test]
     fn finishing_an_unmarked_window_is_harmless() {
         let opening = OpeningWindows::default();
-        opening.finish(SETTINGS_LABEL);
-        assert!(opening.try_begin(SETTINGS_LABEL));
+        opening.finish(HOME_LABEL);
+        assert!(opening.try_begin(HOME_LABEL));
+    }
+
+    #[test]
+    fn home_tabs_have_the_names_the_webview_expects() {
+        assert_eq!(HomeTab::Home.as_str(), "home");
+        assert_eq!(HomeTab::Settings.as_str(), "settings");
+    }
+
+    #[test]
+    fn initial_tab_script_sets_only_the_tab_name() {
+        assert_eq!(
+            initial_tab_script(HomeTab::Settings),
+            r#"window.__MOUCE_HOME_TAB = "settings";"#
+        );
     }
 }
