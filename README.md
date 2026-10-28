@@ -75,56 +75,34 @@ sent anywhere you didn't pick.
 
 ## Getting started
 
-### Install a build
-
-Builds aren't code-signed yet, so the first time you run the installer Windows SmartScreen
-will warn that the publisher is unknown. If you trust where the file came from, choose
-**More info**, then **Run anyway**.
+mouce runs on Windows 11. There are no prebuilt installers yet, so for now you build it from
+source.
 
 ### Build from source
 
-**Prerequisites** (Windows 11):
+**Prerequisites:**
 
 - [Node.js](https://nodejs.org)
 - [Rust](https://rustup.rs) with the MSVC toolchain
 - The WebView2 runtime (already part of Windows 11)
 
 ```sh
+git clone https://github.com/Hirukadeven07/mouce.git
+cd mouce
 npm ci
-npm run build        # the Rust tests need dist/ to exist, so build the frontend first
-npm run tauri dev    # run the app with hot reload
+npm run tauri build
 ```
 
-To produce a debug executable without an installer:
+The installer is written to `src-tauri/target/release/bundle/nsis/`. It isn't code-signed, so
+the first time you run it Windows SmartScreen will warn that the publisher is unknown. Choose
+**More info**, then **Run anyway**.
 
-```sh
-npm run tauri build -- --debug --no-bundle
-```
+### First run
 
-### Run the tests
-
-```sh
-npx vitest --run             # frontend
-cd src-tauri && cargo test   # Rust, including the safety scan
-```
-
-## Project structure
-
-```
-mouce/
-├── src/                  # React + TypeScript UI
-│   ├── mouce/             # the on-screen companion window
-│   ├── settings/         # Settings window
-│   ├── firstrun/         # first-run setup
-│   └── lib/              # IPC bindings and shared types
-├── src-tauri/            # Rust backend (Tauri 2)
-│   ├── src/ai/           # Ollama, OpenAI-compatible, Gemini and Anthropic clients
-│   ├── src/store/        # the only module that writes to disk
-│   ├── src/secrets.rs    # API keys in Windows Credential Manager
-│   └── tests/            # safety scan
-├── docs/                 # design spec and implementation plans
-└── images/               # logo and banner
-```
+When mouce starts for the first time, it checks whether Ollama is installed and running and
+offers to download a starter model. To use an online provider instead, choose **Use an online
+AI** and enter your API key. To open Settings later, right-click the mouce icon in the system
+tray.
 
 ## Roadmap
 
@@ -136,6 +114,3 @@ mouce/
 - [ ] **Calendar and reminders:** add events in plain language, confirm before saving, and get
       gentle reminders
 - [ ] **Packaging:** a signed Windows installer
-
-The full design is in
-[`docs/superpowers/specs/2026-10-27-mouce-design.md`](docs/superpowers/specs/2026-10-27-mouce-design.md).
