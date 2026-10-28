@@ -22,6 +22,7 @@ async function root(): Promise<React.ReactElement> {
     case "home": {
       await pageWindow();
       await import("./home/home.css");
+      await import("./chat/chat.css");
       const { HomeWindow } = await import("./home/HomeWindow");
       return <HomeWindow />;
     }

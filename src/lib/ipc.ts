@@ -108,6 +108,15 @@ export function openHome(): Promise<void> {
   return invoke<void>("open_home");
 }
 
+/** Moves the chat into the home window, full size, closing the panel. */
+export function openHomeChat(): Promise<void> {
+  return invoke<void>("open_home_chat");
+}
+
+export function closeChatPanel(): Promise<void> {
+  return invoke<void>("close_chat_panel");
+}
+
 export function chatHistory(): Promise<ChatTurn[]> {
   return invoke<ChatTurn[]>("chat_history");
 }

@@ -32,6 +32,11 @@ html.page-window #root {
   border-radius: 16px;
 }
 
+.chat-avatar-image {
+  flex: none;
+  margin: 0 3px;
+}
+
 /* The logo is the way home: a round button that shows its fill only on hover and press. */
 html.page-window button.chat-avatar {
   flex: none;
@@ -332,4 +337,16 @@ html.page-window button.chip--on:hover:not(:disabled) {
   html[data-glass="on"] .chat-bar button.icon-button:not(:hover) {
     background: transparent;
   }
+}
+
+/* ---- full size, in the home window ---- */
+
+/* A readable column in the middle of the wide page, as in a document. */
+.chat--full .chat-header,
+.chat--full .chat-log,
+.chat--full .chat-compose {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
 }

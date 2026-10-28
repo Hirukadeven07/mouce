@@ -397,6 +397,13 @@ pub fn click_target(chat_on_screen: bool) -> ClickTarget {
     }
 }
 
+/// Closes the chat panel, if it is open. The conversation lives on in Rust.
+pub fn close_chat(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(CHAT_LABEL) {
+        log_failure("close the chat panel", window.close());
+    }
+}
+
 /// Whether the chat panel is open and not minimised.
 pub fn chat_on_screen(app: &AppHandle) -> bool {
     app.get_webview_window(CHAT_LABEL).is_some_and(|w| {
@@ -419,6 +426,7 @@ pub fn screen_area(app: &AppHandle) -> Option<Rect> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HomeTab {
     Home,
+    Chat,
     Settings,
 }
 
@@ -426,6 +434,7 @@ impl HomeTab {
     pub fn as_str(self) -> &'static str {
         match self {
             HomeTab::Home => "home",
+            HomeTab::Chat => "chat",
             HomeTab::Settings => "settings",
         }
     }
@@ -479,6 +488,7 @@ mod tests {
     #[test]
     fn home_tabs_have_the_names_the_webview_expects() {
         assert_eq!(HomeTab::Home.as_str(), "home");
+        assert_eq!(HomeTab::Chat.as_str(), "chat");
         assert_eq!(HomeTab::Settings.as_str(), "settings");
     }
 

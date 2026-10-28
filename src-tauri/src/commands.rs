@@ -490,6 +490,19 @@ pub fn chat_clear_impl(state: &AppState) -> Result<(), String> {
 /// Takes a picture of the screen the mouce is on, for the AI to look at.
 async fn look_at_screen(app: AppHandle) -> Result<ImageInput, String> {
     let area = mouce::screen_area(&app).ok_or("Could not find the screen to look at")?;
+    // The home window can hold the chat full size. Leave it out of this one picture so the
+    // AI sees what is behind it, as it does with the chat panel; without this it still works.
+    let _home_hidden = match app.get_webview_window(mouce::HOME_LABEL) {
+        Some(home) if home.is_visible().unwrap_or(false) => {
+            let hidden = screen::CaptureExclusion::new(home);
+            if hidden.is_ok() {
+                // Windows applies the change on its next frame.
+                tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+            }
+            hidden.ok()
+        }
+        _ => None,
+    };
     let image = tauri::async_runtime::spawn_blocking(move || screen::capture(area))
         .await
         .map_err(|e| e.to_string())??;
@@ -543,6 +556,19 @@ pub fn open_chat(app: AppHandle) {
 #[tauri::command]
 pub fn open_home(app: AppHandle) {
     mouce::open_home(&app, mouce::HomeTab::Home);
+}
+
+/// Moves the chat from the panel into the home window, full size.
+#[tauri::command]
+pub fn open_home_chat(app: AppHandle) {
+    mouce::close_chat(&app);
+    mouce::open_home(&app, mouce::HomeTab::Chat);
+}
+
+/// Closes the chat panel: the home window is showing the same chat full size.
+#[tauri::command]
+pub fn close_chat_panel(app: AppHandle) {
+    mouce::close_chat(&app);
 }
 
 /// The preview of the circled area waiting to be asked about, if there is one.

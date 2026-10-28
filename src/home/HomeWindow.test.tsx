@@ -46,6 +46,14 @@ describe("HomeWindow", () => {
     vi.mocked(ipc.listModels).mockResolvedValue([]);
     vi.mocked(ipc.getAutostart).mockResolvedValue(false);
     vi.mocked(ipc.onPullProgress).mockResolvedValue(() => {});
+    // The chat tab: one saved conversation, kept in Rust.
+    vi.mocked(ipc.chatHistory).mockResolvedValue([
+      { role: "user", text: "what is this?", looked: false, circled: false },
+      { role: "assistant", text: "A mouse logo.", looked: false, circled: false },
+    ]);
+    vi.mocked(ipc.chatAttachment).mockResolvedValue(null);
+    vi.mocked(ipc.onChatAttachment).mockResolvedValue(() => {});
+    vi.mocked(ipc.closeChatPanel).mockResolvedValue();
   });
 
   it("Ask mouce opens the chat", async () => {
@@ -55,11 +63,48 @@ describe("HomeWindow", () => {
     expect(ipc.openChat).toHaveBeenCalled();
   });
 
+  describe("chat tab", () => {
+    it("shows the same conversation full size and closes the small panel", async () => {
+      render(<HomeWindow />);
+      await userEvent.click(screen.getByRole("tab", { name: "Chat" }));
+      expect(await screen.findByText("A mouse logo.")).toBeInTheDocument();
+      expect(screen.getByText("what is this?")).toBeInTheDocument();
+      expect(ipc.closeChatPanel).toHaveBeenCalledTimes(1);
+      // Chosen with a click: ready to type.
+      expect(screen.getByRole("textbox", { name: "Message" })).toHaveFocus();
+    });
+
+    it("opens on the chat when the panel moves it here", async () => {
+      vi.mocked(ipc.initialHomeTab).mockReturnValue("chat");
+      render(<HomeWindow />);
+      expect(screen.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
+      expect(await screen.findByText("A mouse logo.")).toBeInTheDocument();
+    });
+
+    it("goes back to the small chat and leaves the chat tab", async () => {
+      vi.mocked(ipc.openChat).mockResolvedValue();
+      render(<HomeWindow />);
+      await userEvent.click(screen.getByRole("tab", { name: "Chat" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Back to the small chat" }));
+      expect(ipc.openChat).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("tab", { name: "Home" })).toHaveAttribute("aria-selected", "true");
+      expect(screen.queryByText("A mouse logo.")).not.toBeInTheDocument();
+    });
+
+    it("the full view has no way back to Home in its header, only back to the panel", async () => {
+      render(<HomeWindow />);
+      await userEvent.click(screen.getByRole("tab", { name: "Chat" }));
+      await screen.findByText("A mouse logo.");
+      expect(screen.queryByRole("button", { name: "Open mouce home" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Open full size in mouce home" })).not.toBeInTheDocument();
+    });
+  });
+
   describe("tabs", () => {
     it("opens on Home with every tab listed", async () => {
       render(<HomeWindow />);
       const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-      expect(tabs).toEqual(["Home", "Calendar", "Reminders", "Customize", "Settings"]);
+      expect(tabs).toEqual(["Home", "Chat", "Calendar", "Reminders", "Customize", "Settings"]);
       expect(screen.getByRole("tab", { name: "Home" })).toHaveAttribute("aria-selected", "true");
       expect(await screen.findByText("Ready · runs on this laptop")).toBeInTheDocument();
     });
@@ -90,8 +135,8 @@ describe("HomeWindow", () => {
       render(<HomeWindow />);
       await user.click(screen.getByRole("tab", { name: "Home" }));
       await user.keyboard("{ArrowRight}");
-      expect(screen.getByRole("tab", { name: "Calendar" })).toHaveAttribute("aria-selected", "true");
-      expect(screen.getByRole("tab", { name: "Calendar" })).toHaveFocus();
+      expect(screen.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByRole("tab", { name: "Chat" })).toHaveFocus();
       await user.keyboard("{ArrowLeft}{ArrowLeft}");
       expect(screen.getByRole("tab", { name: /Settings/ })).toHaveAttribute("aria-selected", "true");
     });
