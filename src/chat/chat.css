@@ -102,6 +102,12 @@ html.page-window #root {
   margin-top: 12px;
 }
 
+.chat-empty-tip {
+  margin-top: 10px;
+  color: var(--label-2);
+  font-size: 12px;
+}
+
 .bubble-row {
   display: flex;
   flex-direction: column;
@@ -220,6 +226,51 @@ html.page-window .compose-box textarea:focus-visible {
 .compose-box:has(textarea:focus-visible) {
   outline: 2px solid var(--focus);
   outline-offset: 0;
+}
+
+/* The circled area waiting to be asked about, held inside the composer. */
+.chat-attachment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -2px -2px 8px -6px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--fill);
+}
+
+.chat-attachment img {
+  flex: none;
+  max-width: 88px;
+  max-height: 56px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--separator);
+}
+
+.chat-attachment-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.chat-attachment-text p {
+  color: var(--label-2);
+}
+
+html.page-window button.chat-attachment-remove {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+}
+
+.chat-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .chat-look-note {

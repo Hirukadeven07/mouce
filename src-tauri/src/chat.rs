@@ -15,6 +15,8 @@ doing, tell them how to do it themselves. Keep answers short and clear, in plain
 pub const MAX_TOKENS: u32 = 1024;
 /// The question used when the user shares their screen without typing anything.
 pub const LOOK_QUESTION: &str = "What's on my screen?";
+/// The question used when the user sends a circled area without typing anything.
+pub const CIRCLE_QUESTION: &str = "What is this?";
 /// How many of the latest messages go to the AI with each question.
 const SENT_MESSAGES: usize = 20;
 /// How many messages the saved history keeps.
@@ -35,6 +37,17 @@ pub struct Turn {
     /// The user shared their screen with this message.
     #[serde(default)]
     pub looked: bool,
+    /// The user circled part of their screen for this message.
+    #[serde(default)]
+    pub circled: bool,
+}
+
+/// A circled part of the screen waiting to be asked about: the image for the AI and a
+/// small preview for the chat.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Snip {
+    pub image: ImageInput,
+    pub thumbnail: String,
 }
 
 /// The conversation in memory. Only the most recent screen image is kept, attached to
@@ -66,6 +79,18 @@ impl Conversation {
             role: TurnRole::User,
             text,
             looked,
+            circled: false,
+        });
+    }
+
+    /// Adds a question about a circled part of the screen.
+    pub fn push_user_circled(&mut self, text: String, image: ImageInput) {
+        self.screen = Some((self.turns.len(), image));
+        self.turns.push(Turn {
+            role: TurnRole::User,
+            text,
+            looked: false,
+            circled: true,
         });
     }
 
@@ -74,6 +99,7 @@ impl Conversation {
             role: TurnRole::Assistant,
             text,
             looked: false,
+            circled: false,
         });
     }
 
@@ -257,6 +283,28 @@ mod tests {
             .all(|m| m.images.is_empty()));
         c.drop_unanswered();
         assert_eq!(c.turns().len(), 2, "an answered question stays");
+    }
+
+    #[test]
+    fn a_circled_image_is_sent_with_its_question_and_remembered_as_circled() {
+        let mut c = Conversation::default();
+        c.push_user_circled("what is this?".into(), image());
+        c.push_assistant("a chart".into());
+        c.push_user("and the red line?".into(), None);
+        let req = c.request("m".into());
+        assert_eq!(req.messages[0].images, vec![image()]);
+        assert!(req.messages[2].images.is_empty());
+        assert!(c.turns()[0].circled && !c.turns()[0].looked);
+        c.drop_unanswered();
+        c.drop_unanswered();
+        assert_eq!(c.turns().len(), 2, "answered questions stay");
+    }
+
+    #[test]
+    fn history_saved_before_circling_existed_still_loads() {
+        let old = r#"[{"role":"user","text":"hi","looked":true}]"#;
+        let turns: Vec<Turn> = serde_json::from_str(old).unwrap();
+        assert!(turns[0].looked && !turns[0].circled);
     }
 
     #[test]

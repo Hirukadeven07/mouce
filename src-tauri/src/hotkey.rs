@@ -1,10 +1,12 @@
-//! The keyboard shortcut that opens the chat from any app. Windows tells mouce only when
-//! this exact key combination is pressed; no other typing is seen.
+//! The keyboard shortcuts that open the chat and start "Circle to look up" from any app.
+//! Windows tells mouce only when one of these exact key combinations is pressed; no other
+//! typing is seen.
 
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut};
 
 pub const DEFAULT_CHAT_HOTKEY: &str = "Ctrl+Alt+M";
+pub const DEFAULT_CIRCLE_HOTKEY: &str = "Ctrl+Alt+O";
 
 /// Checks a shortcut the user typed, such as "Ctrl+Alt+M". Blank means no shortcut. A
 /// shortcut needs Ctrl, Alt or the Windows key, so it can never swallow ordinary typing.
@@ -25,7 +27,22 @@ pub fn parse(text: &str) -> Result<Option<Shortcut>, String> {
     Ok(Some(shortcut))
 }
 
-/// Swaps the chat shortcut from `old` to `new`. If `new` cannot be used (for example,
+/// Whether `pressed` is the shortcut written as `text`.
+pub fn matches(text: &str, pressed: &Shortcut) -> bool {
+    parse(text).ok().flatten().is_some_and(|s| s.id == pressed.id)
+}
+
+/// The settings refuse two features on one shortcut: only one of them could ever run.
+pub fn check_distinct(chat: &str, circle: &str) -> Result<(), String> {
+    match (parse(chat)?, parse(circle)?) {
+        (Some(a), Some(b)) if a.id == b.id => {
+            Err("The chat and Circle to look up need different shortcuts".to_string())
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Swaps a shortcut from `old` to `new`. If `new` cannot be used (for example,
 /// another app already has it), `old` is put back and the error says why.
 pub fn replace(app: &AppHandle, old: &str, new: &str) -> Result<(), String> {
     let next = parse(new)?;
@@ -45,7 +62,7 @@ pub fn replace(app: &AppHandle, old: &str, new: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Starts listening for the chat shortcut.
+/// Starts listening for a shortcut.
 pub fn register(app: &AppHandle, text: &str) -> Result<(), String> {
     replace(app, "", text)
 }
@@ -67,6 +84,23 @@ mod tests {
         assert_eq!(parse(" ctrl + alt + m ").unwrap(), parse("Ctrl+Alt+M").unwrap());
         assert_eq!(parse("Control+Shift+K").unwrap().unwrap().key, Code::KeyK);
         assert!(parse("Super+F2").unwrap().is_some());
+    }
+
+    #[test]
+    fn matches_compares_the_keys_not_the_spelling() {
+        let pressed = parse("Ctrl+Alt+O").unwrap().unwrap();
+        assert!(matches("ctrl + alt + o", &pressed));
+        assert!(!matches("Ctrl+Alt+M", &pressed));
+        assert!(!matches("", &pressed));
+        assert!(!matches("nonsense", &pressed));
+    }
+
+    #[test]
+    fn chat_and_circle_need_different_shortcuts() {
+        assert!(check_distinct("Ctrl+Alt+M", "Ctrl+Alt+O").is_ok());
+        assert!(check_distinct("", "").is_ok(), "both off is fine");
+        let err = check_distinct("Ctrl+Alt+M", "alt+ctrl+m").unwrap_err();
+        assert!(err.contains("different shortcuts"), "{err}");
     }
 
     #[test]

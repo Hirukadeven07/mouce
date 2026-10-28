@@ -2,11 +2,15 @@ import { useEffect, useId, useRef, useState } from "react";
 import logoUrl from "../assets/mouce.png";
 import { activeModel } from "../home/useAiStatus";
 import {
+  chatAttachment,
   chatClear,
+  chatDiscardAttachment,
   chatHistory,
   chatSend,
   chatStop,
+  circleStart,
   getSettings,
+  onChatAttachment,
   onSettingsChanged,
 } from "../lib/ipc";
 import type { ChatTurn, Settings } from "../lib/types";
@@ -16,6 +20,8 @@ import { Icon } from "../ui/Icon";
 
 /** Matches `chat::LOOK_QUESTION` in Rust: the question when only the screen is shared. */
 export const LOOK_QUESTION = "What's on my screen?";
+/** Matches `chat::CIRCLE_QUESTION` in Rust: the question when only a circled area is sent. */
+export const CIRCLE_QUESTION = "What is this?";
 
 function providerName(settings: Settings): string {
   return PROVIDERS.find((p) => p.id === settings.provider)?.label ?? settings.provider;
@@ -30,10 +36,18 @@ export function lookNote(settings: Settings | null): string {
   return `mouce will take one picture of this screen and send it to ${providerName(settings)}.`;
 }
 
+/** Where a circled area goes when it is asked about. */
+export function circleNote(settings: Settings | null): string {
+  if (!settings) return "Only this part of your screen is sent with your question.";
+  if (settings.provider === "ollama") return "Only this part is used, and it stays on this computer.";
+  return `Only this part is sent to ${providerName(settings)} with your question.`;
+}
+
 /** The question being answered right now, and what is written of the answer so far. */
 interface Pending {
   question: string;
   looked: boolean;
+  circled: boolean;
   answer: string;
 }
 
@@ -47,6 +61,12 @@ function Bubble(props: { turn: ChatTurn; note?: string; writing?: boolean }) {
           <span className="bubble-chip">
             <Icon name="look" size={13} />
             Shared screen
+          </span>
+        )}
+        {turn.circled && (
+          <span className="bubble-chip">
+            <Icon name="circle" size={13} />
+            Circled
           </span>
         )}
         {turn.text && <p className="bubble-text">{turn.text}</p>}
@@ -72,15 +92,27 @@ export function ChatWindow() {
   const [pending, setPending] = useState<Pending | null>(null);
   const [draft, setDraft] = useState("");
   const [look, setLook] = useState(false);
+  // Preview of the circled area waiting to be asked about.
+  const [attachment, setAttachment] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mounted = useRef(true);
-  const ids = { input: useId(), lookNote: useId() };
+  const ids = { input: useId(), lookNote: useId(), circleNote: useId() };
 
   useEffect(() => {
     mounted.current = true;
-    const unlisten = onSettingsChanged((s) => mounted.current && setSettings(s)).catch(() => null);
+    const unlisteners = [
+      onSettingsChanged((s) => mounted.current && setSettings(s)),
+      onChatAttachment((preview) => {
+        if (!mounted.current) return;
+        setAttachment(preview);
+        inputRef.current?.focus();
+      }),
+    ].map((p) => p.catch(() => null));
+    chatAttachment()
+      .then((preview) => mounted.current && setAttachment(preview))
+      .catch(() => {});
     getSettings()
       .then((s) => mounted.current && setSettings((cur) => cur ?? s))
       .catch(() => {});
@@ -94,7 +126,7 @@ export function ChatWindow() {
     return () => {
       mounted.current = false;
       window.removeEventListener("focus", onFocus);
-      unlisten.then((un) => un?.()).catch(() => {});
+      unlisteners.forEach((p) => p.then((un) => un?.()).catch(() => {}));
     };
   }, []);
 
@@ -104,11 +136,15 @@ export function ChatWindow() {
   }, [turns, pending]);
 
   async function ask(text: string, withScreen: boolean) {
-    if (pending || (!text && !withScreen)) return;
+    // Rust sends the circled area unless the whole screen is shared instead.
+    const circled = !withScreen && attachment !== null;
+    if (pending || (!text && !withScreen && !circled)) return;
     setError(null);
     setDraft("");
     setLook(false);
-    setPending({ question: text || LOOK_QUESTION, looked: withScreen, answer: "" });
+    const question = text || (withScreen ? LOOK_QUESTION : CIRCLE_QUESTION);
+    setPending({ question, looked: withScreen, circled, answer: "" });
+    if (circled) setAttachment(null);
     let note: string | null = null;
     try {
       const reply = await chatSend(text, withScreen, (chunk) => {
@@ -125,6 +161,9 @@ export function ChatWindow() {
       setDraft(text);
       setLook(withScreen);
     }
+    // A circled area comes back if its question failed; otherwise it has been used.
+    const waiting = await chatAttachment().catch(() => null);
+    if (mounted.current) setAttachment(waiting);
     // The chat in Rust is the source of truth: a failed or empty question is gone again.
     const latest = await chatHistory().catch(() => null);
     if (!mounted.current) return;
@@ -151,7 +190,8 @@ export function ChatWindow() {
 
   const model = settings ? activeModel(settings) : null;
   const busy = pending !== null;
-  const canSend = !busy && (draft.trim() !== "" || look);
+  const canSend = !busy && (draft.trim() !== "" || look || attachment !== null);
+  const circleKeys = settings?.circle_hotkey;
 
   return (
     <div className="chat" ref={scrollRef}>
@@ -189,6 +229,9 @@ export function ChatWindow() {
               <Icon name="look" size={16} />
               {LOOK_QUESTION}
             </button>
+            {circleKeys && (
+              <p className="chat-empty-tip">Press {circleKeys} in any app to circle something.</p>
+            )}
           </div>
         )}
         {turns.map((t, i) => (
@@ -196,9 +239,16 @@ export function ChatWindow() {
         ))}
         {pending && (
           <>
-            <Bubble turn={{ role: "user", text: pending.question, looked: pending.looked }} />
             <Bubble
-              turn={{ role: "assistant", text: pending.answer, looked: false }}
+              turn={{
+                role: "user",
+                text: pending.question,
+                looked: pending.looked,
+                circled: pending.circled,
+              }}
+            />
+            <Bubble
+              turn={{ role: "assistant", text: pending.answer, looked: false, circled: false }}
               writing={pending.answer === ""}
             />
           </>
@@ -218,6 +268,28 @@ export function ChatWindow() {
           </p>
         )}
         <div className="compose-box glass">
+          {attachment && (
+            <div className="chat-attachment">
+              <img src={attachment} alt="The part of your screen you circled" />
+              <div className="chat-attachment-text">
+                <strong>Circled</strong>
+                <p id={ids.circleNote}>{circleNote(settings)}</p>
+              </div>
+              <button
+                type="button"
+                className="icon-button chat-attachment-remove"
+                aria-label="Remove the circled area"
+                title="Remove"
+                disabled={busy}
+                onClick={() => {
+                  setAttachment(null);
+                  void chatDiscardAttachment().catch(() => {});
+                }}
+              >
+                <Icon name="close" size={14} />
+              </button>
+            </div>
+          )}
           <label htmlFor={ids.input} className="visually-hidden">
             Message
           </label>
@@ -226,8 +298,14 @@ export function ChatWindow() {
             ref={inputRef}
             rows={2}
             value={draft}
-            placeholder={look ? "Ask about your screen (optional)" : "Ask mouce…"}
-            aria-describedby={look ? ids.lookNote : undefined}
+            placeholder={
+              look
+                ? "Ask about your screen (optional)"
+                : attachment
+                  ? "Ask about what you circled (optional)"
+                  : "Ask mouce…"
+            }
+            aria-describedby={look ? ids.lookNote : attachment ? ids.circleNote : undefined}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -242,16 +320,28 @@ export function ChatWindow() {
             </p>
           )}
           <div className="chat-actions">
-            <button
-              type="button"
-              className={"chip" + (look ? " chip--on" : "")}
-              aria-pressed={look}
-              disabled={busy}
-              onClick={() => setLook((l) => !l)}
-            >
-              <Icon name="look" size={16} />
-              Look at my screen
-            </button>
+            <div className="chat-tools">
+              <button
+                type="button"
+                className={"chip" + (look ? " chip--on" : "")}
+                aria-pressed={look}
+                disabled={busy || attachment !== null}
+                onClick={() => setLook((l) => !l)}
+              >
+                <Icon name="look" size={16} />
+                Look at my screen
+              </button>
+              <button
+                type="button"
+                className="chip"
+                disabled={busy}
+                title={circleKeys ? `Circle to look up (${circleKeys})` : "Circle to look up"}
+                onClick={() => void circleStart().catch(() => {})}
+              >
+                <Icon name="circle" size={16} />
+                Circle
+              </button>
+            </div>
             {busy ? (
               <button
                 type="button"

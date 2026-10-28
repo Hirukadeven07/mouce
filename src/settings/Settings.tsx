@@ -4,20 +4,58 @@ import { Switch } from "../ui/Switch";
 import { AiSettings } from "./AiSettings";
 import { errorText, useSettings } from "./useSettings";
 
+/** One keyboard shortcut in a settings row: type it, then Save. Empty turns it off. */
+function ShortcutField(props: {
+  label: string;
+  saved: string;
+  describedBy: string;
+  onSave: (keys: string) => void;
+}) {
+  const { label, saved, describedBy, onSave } = props;
+  const id = useId();
+  const [keys, setKeys] = useState(saved);
+
+  // Show the saved shortcut whenever it changes (saved here, refused, or changed elsewhere).
+  useEffect(() => setKeys(saved), [saved]);
+
+  return (
+    <form
+      className="form-row"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(keys.trim());
+      }}
+    >
+      <div className="form-line">
+        <label className="form-label" htmlFor={id}>
+          {label}
+        </label>
+        <div className="form-control">
+          <input
+            id={id}
+            type="text"
+            value={keys}
+            placeholder="Off"
+            spellCheck={false}
+            aria-describedby={describedBy}
+            onChange={(e) => setKeys(e.target.value)}
+          />
+          <button type="submit" disabled={keys.trim() === saved}>
+            Save
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
 /** The Settings tab of the home window. */
 export function Settings() {
   const { settings, error, save } = useSettings();
-  const ids = { history: useId(), startup: useId(), chatKey: useId(), chatKeyNote: useId() };
-  const [chatKey, setChatKey] = useState("");
+  const ids = { history: useId(), startup: useId(), keysNote: useId() };
   const [autostart, setAutostartState] = useState<boolean | null>(null);
   const [autostartError, setAutostartError] = useState<string | null>(null);
   const [autostartBusy, setAutostartBusy] = useState(false);
-
-  // Show the saved shortcut whenever it changes (saved here, refused, or changed elsewhere).
-  const savedChatKey = settings?.chat_hotkey;
-  useEffect(() => {
-    if (savedChatKey !== undefined) setChatKey(savedChatKey);
-  }, [savedChatKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,42 +104,21 @@ export function Settings() {
 
       <h2 className="group-title">Shortcuts</h2>
       <div className="group">
-        <form
-          className="form-row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save({ chat_hotkey: chatKey.trim() });
-          }}
-        >
-          <div className="form-line">
-            <label className="form-label" htmlFor={ids.chatKey}>
-              Open the chat from any app
-            </label>
-            <div className="form-control">
-              <input
-                id={ids.chatKey}
-                type="text"
-                value={chatKey}
-                placeholder="Off"
-                spellCheck={false}
-                aria-describedby={ids.chatKeyNote}
-                onChange={(e) => setChatKey(e.target.value)}
-              />
-              <button type="submit" disabled={chatKey.trim() === settings.chat_hotkey}>
-                Save
-              </button>
-            </div>
-          </div>
-        </form>
-        <div className="form-row">
-          <div className="form-line">
-            <span className="form-label">Circle to look up</span>
-            <kbd>Ctrl+Alt+Space</kbd>
-          </div>
-        </div>
+        <ShortcutField
+          label="Open the chat from any app"
+          saved={settings.chat_hotkey}
+          describedBy={ids.keysNote}
+          onSave={(keys) => void save({ chat_hotkey: keys })}
+        />
+        <ShortcutField
+          label="Circle to look up"
+          saved={settings.circle_hotkey}
+          describedBy={ids.keysNote}
+          onSave={(keys) => void save({ circle_hotkey: keys })}
+        />
       </div>
-      <p className="group-footer" id={ids.chatKeyNote}>
-        For example Ctrl+Alt+M. Leave it empty to turn the shortcut off.
+      <p className="group-footer" id={ids.keysNote}>
+        For example Ctrl+Alt+M or Ctrl+Alt+O. Leave a shortcut empty to turn it off.
       </p>
 
       <h2 className="group-title">Privacy</h2>
