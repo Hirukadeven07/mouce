@@ -318,7 +318,7 @@ fn capabilities_grant_only_allowlist() {
     assert!(!files.is_empty(), "no capability files found");
 
     let mut granted = std::collections::BTreeSet::new();
-    let expected_windows = serde_json::json!(["mouce", "settings", "firstrun"]);
+    let expected_windows = serde_json::json!(["mouce", "home", "firstrun"]);
 
     for path in &files {
         let name = path.display();
@@ -339,7 +339,7 @@ fn capabilities_grant_only_allowlist() {
         assert_eq!(
             value.get("windows"),
             Some(&expected_windows),
-            "{name}: capability windows must be exactly mouce, settings, firstrun"
+            "{name}: capability windows must be exactly mouce, home, firstrun"
         );
         let perms = value
             .get("permissions")

@@ -1,0 +1,323 @@
+/* The home window. Colours follow the logo: navy eyes, silver rim, warm off-white page. */
+:root {
+  --navy: #1f3566;
+  --navy-soft: #e9eef7;
+  --line: #e8e4db;
+  --ok: #2d7a3a;
+  --warn: #a8660a;
+}
+
+.home {
+  box-sizing: border-box;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 18px 24px 28px;
+}
+
+.home-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.home-logo {
+  flex: none;
+}
+
+.home-header h1 {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.home-greeting {
+  margin: 0 0 0 6px;
+  color: #6b6b6b;
+  font-size: 14px;
+}
+
+.home-tabs {
+  display: flex;
+  gap: 2px;
+  margin-top: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.home-tab {
+  font: inherit;
+  padding: 8px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: #5d5d5d;
+  cursor: pointer;
+}
+
+.home-tab:hover {
+  color: var(--navy);
+}
+
+.home-tab[aria-selected="true"] {
+  color: var(--navy);
+  font-weight: 600;
+  border-bottom-color: var(--navy);
+}
+
+.home-tab:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.home-tab--end {
+  margin-left: auto;
+}
+
+.home-tab-icon {
+  margin-right: 6px;
+}
+
+.home-panel {
+  padding-top: 18px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.card-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #7a7a7a;
+}
+
+.link {
+  margin-left: auto;
+  font: inherit;
+  font-size: 13px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--navy);
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.link:focus-visible,
+.ai-change:focus-visible,
+.calendar-nav button:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 2px;
+}
+
+.empty {
+  margin: 0;
+  color: #8a8a8a;
+  font-size: 14px;
+}
+
+/* ---- AI card ---- */
+
+.ai-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.ai-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.ai-dot--ok {
+  background: var(--ok);
+  box-shadow: 0 0 0 4px #e3f1e5;
+}
+
+.ai-dot--warn {
+  background: #e0a030;
+  box-shadow: 0 0 0 4px #fbefd9;
+}
+
+.ai-dot--checking {
+  background: #b9b4aa;
+  box-shadow: 0 0 0 4px #f0eee9;
+}
+
+.ai-text {
+  min-width: 0;
+}
+
+.ai-model {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ai-status {
+  margin: 0;
+  font-size: 13px;
+}
+
+.ai-status--ok {
+  color: var(--ok);
+}
+
+.ai-status--warn {
+  color: var(--warn);
+}
+
+.ai-status--checking {
+  color: #8a8a8a;
+}
+
+.pill {
+  flex: none;
+  background: var(--navy-soft);
+  color: var(--navy);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.ai-change {
+  margin-left: auto;
+  flex: none;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 12px;
+  border: 1px solid #cfd6e4;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--navy);
+  cursor: pointer;
+}
+
+.ai-change:hover {
+  background: var(--navy-soft);
+}
+
+/* ---- dashboard grid ---- */
+
+.home-grid {
+  display: grid;
+  grid-template-columns: 270px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.home-stack {
+  display: grid;
+  gap: 14px;
+}
+
+@media (max-width: 640px) {
+  .home-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- month view ---- */
+
+.month {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.month-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.month-head {
+  color: #9a9a9a;
+  font-size: 11px;
+  padding-bottom: 4px;
+}
+
+.month-day {
+  padding: 5px 0;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.month-day--other {
+  color: #c4c0b8;
+}
+
+.month-day--today {
+  background: var(--navy);
+  color: #fff;
+  font-weight: 600;
+}
+
+.month--large {
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+
+.month--large .month-day {
+  padding: 12px 0;
+}
+
+/* ---- calendar tab ---- */
+
+.calendar-nav {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.calendar-nav button {
+  font: inherit;
+  font-size: 13px;
+  min-width: 32px;
+  padding: 4px 10px;
+  border: 1px solid #cfd6e4;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--navy);
+  cursor: pointer;
+}
+
+.calendar-nav button:hover:not(:disabled) {
+  background: var(--navy-soft);
+}
+
+.calendar-nav button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Settings and Customize reuse the .page form styles inside the panel. */
+.home-panel .page {
+  padding-top: 0;
+}
+
+.home-panel .page section:first-of-type {
+  border-top: none;
+  padding-top: 4px;
+}

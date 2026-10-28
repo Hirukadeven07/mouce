@@ -11,11 +11,12 @@ async function root(): Promise<React.ReactElement> {
       const { MouceWindow } = await import("./mouce/Mouce");
       return <MouceWindow />;
     }
-    case "settings": {
+    case "home": {
       document.documentElement.classList.add("page-window");
       await import("./settings/settings.css");
-      const { Settings } = await import("./settings/Settings");
-      return <Settings />;
+      await import("./home/home.css");
+      const { HomeWindow } = await import("./home/HomeWindow");
+      return <HomeWindow />;
     }
     case "firstrun": {
       document.documentElement.classList.add("page-window");
