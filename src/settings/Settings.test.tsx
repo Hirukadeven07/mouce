@@ -20,6 +20,7 @@ const baseSettings: Settings = {
   history_enabled: false,
   fallback_to_local: true,
   first_run_done: true,
+  liquid_glass: true,
 };
 
 let progressCb: ((p: PullProgress) => void) | undefined;
@@ -29,7 +30,7 @@ async function renderSettings() {
   await screen.findByLabelText("Provider");
   // Let the startup checks (key status, model list, autostart) settle.
   await waitFor(() => expect(ipc.getAutostart).toHaveBeenCalled());
-  await screen.findByRole("checkbox", { name: "Start mouce when Windows starts" });
+  await screen.findByRole("switch", { name: "Start mouce when Windows starts" });
 }
 
 describe("Settings", () => {
@@ -178,7 +179,7 @@ describe("Settings", () => {
       () => new Promise<Settings>((resolve) => (finish = resolve)),
     );
     await renderSettings();
-    const history = () => screen.getByRole("checkbox", { name: "Keep chat history" });
+    const history = () => screen.getByRole("switch", { name: "Keep chat history" });
     await user.click(history());
     expect(history()).toBeChecked();
 
@@ -243,7 +244,7 @@ describe("Settings", () => {
     let finish: () => void = () => {};
     vi.mocked(ipc.setAutostart).mockImplementation(() => new Promise<void>((r) => (finish = r)));
     await renderSettings();
-    const box = screen.getByRole("checkbox", { name: "Start mouce when Windows starts" });
+    const box = screen.getByRole("switch", { name: "Start mouce when Windows starts" });
     await user.click(box);
     expect(box).toBeDisabled();
     expect(box).toBeChecked();
@@ -259,7 +260,7 @@ describe("Settings", () => {
     vi.mocked(ipc.getAutostart).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     vi.mocked(ipc.setAutostart).mockRejectedValue("Access is denied");
     await renderSettings();
-    const box = screen.getByRole("checkbox", { name: "Start mouce when Windows starts" });
+    const box = screen.getByRole("switch", { name: "Start mouce when Windows starts" });
     await user.click(box);
     expect(await screen.findByText("Access is denied")).toBeInTheDocument();
     await waitFor(() => expect(box).toBeEnabled());

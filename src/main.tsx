@@ -1,7 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { followGlassSetting } from "./lib/appearance";
 import { blockContextMenu } from "./lib/blockContextMenu";
 import { windowLabel } from "./lib/ipc";
+
+/** The home, chat and first-run windows share one look and the Liquid Glass setting. */
+async function pageWindow(): Promise<void> {
+  document.documentElement.classList.add("page-window");
+  followGlassSetting();
+  await import("./styles/app.css");
+}
 
 async function root(): Promise<React.ReactElement> {
   switch (windowLabel()) {
@@ -12,16 +20,13 @@ async function root(): Promise<React.ReactElement> {
       return <MouceWindow />;
     }
     case "home": {
-      document.documentElement.classList.add("page-window");
-      await import("./settings/settings.css");
+      await pageWindow();
       await import("./home/home.css");
       const { HomeWindow } = await import("./home/HomeWindow");
       return <HomeWindow />;
     }
     case "chat": {
-      document.documentElement.classList.add("page-window");
-      await import("./settings/settings.css");
-      await import("./home/home.css");
+      await pageWindow();
       await import("./chat/chat.css");
       const { ChatWindow } = await import("./chat/ChatWindow");
       return <ChatWindow />;
@@ -33,8 +38,8 @@ async function root(): Promise<React.ReactElement> {
       return <CircleLayer />;
     }
     case "firstrun": {
-      document.documentElement.classList.add("page-window");
-      await import("./settings/settings.css");
+      await pageWindow();
+      await import("./firstrun/firstrun.css");
       const { FirstRun } = await import("./firstrun/FirstRun");
       return <FirstRun />;
     }

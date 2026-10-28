@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon } from "../ui/Icon";
 import { monthTitle } from "./dates";
 import { MonthView } from "./MonthView";
 
@@ -15,12 +16,12 @@ export function CalendarTab(props: { today: Date }) {
   return (
     <section className="card calendar" aria-labelledby="calendar-title">
       <div className="card-head">
-        <h2 id="calendar-title" aria-live="polite">
+        <h2 id="calendar-title" className="headline" aria-live="polite">
           {monthTitle(shown.year, shown.month)}
         </h2>
         <div className="calendar-nav">
-          <button type="button" onClick={() => move(-1)} aria-label="Previous month">
-            ‹
+          <button type="button" className="icon-button" onClick={() => move(-1)} aria-label="Previous month">
+            <Icon name="chevronLeft" size={16} />
           </button>
           <button
             type="button"
@@ -29,8 +30,8 @@ export function CalendarTab(props: { today: Date }) {
           >
             Today
           </button>
-          <button type="button" onClick={() => move(1)} aria-label="Next month">
-            ›
+          <button type="button" className="icon-button" onClick={() => move(1)} aria-label="Next month">
+            <Icon name="chevronRight" size={16} />
           </button>
         </div>
       </div>
@@ -46,13 +47,14 @@ export function CalendarTab(props: { today: Date }) {
 /** Things you asked mouce to remind you about. Filled once reminders exist. */
 export function RemindersTab() {
   return (
-    <section className="card" aria-labelledby="reminders-title">
-      <div className="card-head">
-        <h2 id="reminders-title">Reminders</h2>
-      </div>
+    <section className="card empty-state" aria-labelledby="reminders-title">
+      <Icon name="reminders" size={36} />
+      <h2 id="reminders-title" className="headline">
+        No reminders yet
+      </h2>
       <p className="empty">
-        No reminders yet. Soon you'll be able to say “remind me to submit the lab report on Friday”
-        and mouce will nudge you at the right time.
+        Soon you'll be able to say “remind me to submit the lab report on Friday” and mouce will
+        nudge you at the right time.
       </p>
     </section>
   );

@@ -21,6 +21,7 @@ const baseSettings: Settings = {
   history_enabled: false,
   fallback_to_local: true,
   first_run_done: true,
+  liquid_glass: true,
 };
 
 let tabCb: ((tab: HomeTabId) => void) | undefined;
@@ -58,7 +59,7 @@ describe("HomeWindow", () => {
     it("opens on Home with every tab listed", async () => {
       render(<HomeWindow />);
       const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-      expect(tabs).toEqual(["Home", "Calendar", "Reminders", "Customize", "⚙Settings"]);
+      expect(tabs).toEqual(["Home", "Calendar", "Reminders", "Customize", "Settings"]);
       expect(screen.getByRole("tab", { name: "Home" })).toHaveAttribute("aria-selected", "true");
       expect(await screen.findByText("Ready · runs on this laptop")).toBeInTheDocument();
     });
@@ -81,7 +82,7 @@ describe("HomeWindow", () => {
       await waitFor(() => expect(tabCb).toBeDefined());
       act(() => tabCb!("customize"));
       expect(screen.getByRole("tab", { name: "Customize" })).toHaveAttribute("aria-selected", "true");
-      expect(await screen.findByRole("checkbox", { name: "Sway" })).toBeInTheDocument();
+      expect(await screen.findByRole("switch", { name: "Sway" })).toBeInTheDocument();
     });
 
     it("moves between tabs with the arrow keys", async () => {

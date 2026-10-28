@@ -19,6 +19,7 @@ const baseSettings: Settings = {
   history_enabled: false,
   fallback_to_local: true,
   first_run_done: true,
+  liquid_glass: true,
 };
 
 describe("Mouce", () => {

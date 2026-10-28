@@ -142,6 +142,7 @@ pub fn update_settings(
 ) -> Result<Settings, String> {
     hotkey::check_distinct(&settings.chat_hotkey, &settings.circle_hotkey)?;
     let current = get_settings_impl(&state);
+    let glass_before = current.liquid_glass;
     let moves: Vec<(String, String)> = [
         (current.chat_hotkey, settings.chat_hotkey.clone()),
         (current.circle_hotkey, settings.circle_hotkey.clone()),
@@ -159,6 +160,9 @@ pub fn update_settings(
         // The settings are already saved; a window that could not resize is not an error.
         let resized = mouce::resize(&app, saved.mouce_size);
         log_best_effort("resize the mouce after saving settings", resized, |m| eprintln!("{m}"));
+    }
+    if saved.liquid_glass != glass_before {
+        mouce::set_glass(&app, saved.liquid_glass);
     }
     Ok(saved)
 }

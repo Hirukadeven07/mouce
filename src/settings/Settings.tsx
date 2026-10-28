@@ -1,16 +1,17 @@
 import { useEffect, useId, useState } from "react";
 import { getAutostart, setAutostart } from "../lib/ipc";
+import { Switch } from "../ui/Switch";
 import { AiSettings } from "./AiSettings";
 import { errorText, useSettings } from "./useSettings";
 
-/** One keyboard shortcut: type it, then Save. Empty turns it off. */
+/** One keyboard shortcut in a settings row: type it, then Save. Empty turns it off. */
 function ShortcutField(props: {
   label: string;
-  example: string;
   saved: string;
+  describedBy: string;
   onSave: (keys: string) => void;
 }) {
-  const { label, example, saved, onSave } = props;
+  const { label, saved, describedBy, onSave } = props;
   const id = useId();
   const [keys, setKeys] = useState(saved);
 
@@ -19,27 +20,31 @@ function ShortcutField(props: {
 
   return (
     <form
-      className="field"
+      className="form-row"
       onSubmit={(e) => {
         e.preventDefault();
         onSave(keys.trim());
       }}
     >
-      <label htmlFor={id}>{label}</label>
-      <div className="row">
-        <input
-          id={id}
-          type="text"
-          value={keys}
-          placeholder="Off"
-          spellCheck={false}
-          onChange={(e) => setKeys(e.target.value)}
-        />
-        <button type="submit" disabled={keys.trim() === saved}>
-          Save
-        </button>
+      <div className="form-line">
+        <label className="form-label" htmlFor={id}>
+          {label}
+        </label>
+        <div className="form-control">
+          <input
+            id={id}
+            type="text"
+            value={keys}
+            placeholder="Off"
+            spellCheck={false}
+            aria-describedby={describedBy}
+            onChange={(e) => setKeys(e.target.value)}
+          />
+          <button type="submit" disabled={keys.trim() === saved}>
+            Save
+          </button>
+        </div>
       </div>
-      <p className="muted">For example {example}. Leave it empty to turn the shortcut off.</p>
     </form>
   );
 }
@@ -47,7 +52,7 @@ function ShortcutField(props: {
 /** The Settings tab of the home window. */
 export function Settings() {
   const { settings, error, save } = useSettings();
-  const ids = { history: useId(), startup: useId() };
+  const ids = { history: useId(), startup: useId(), keysNote: useId() };
   const [autostart, setAutostartState] = useState<boolean | null>(null);
   const [autostartError, setAutostartError] = useState<string | null>(null);
   const [autostartBusy, setAutostartBusy] = useState(false);
@@ -92,60 +97,67 @@ export function Settings() {
 
   return (
     <div className="page">
-      {error && <p role="alert" className="error">{error}</p>}
+      {error && <p role="alert" className="notice">{error}</p>}
 
-      <section>
-        <h2>AI</h2>
-        <AiSettings />
-      </section>
+      <h2 className="group-title">AI</h2>
+      <AiSettings />
 
-      <section>
-        <h2>Shortcuts</h2>
+      <h2 className="group-title">Shortcuts</h2>
+      <div className="group">
         <ShortcutField
           label="Open the chat from any app"
-          example="Ctrl+Alt+M"
           saved={settings.chat_hotkey}
+          describedBy={ids.keysNote}
           onSave={(keys) => void save({ chat_hotkey: keys })}
         />
         <ShortcutField
           label="Circle to look up"
-          example="Ctrl+Alt+O"
           saved={settings.circle_hotkey}
+          describedBy={ids.keysNote}
           onSave={(keys) => void save({ circle_hotkey: keys })}
         />
-      </section>
+      </div>
+      <p className="group-footer" id={ids.keysNote}>
+        For example Ctrl+Alt+M or Ctrl+Alt+O. Leave a shortcut empty to turn it off.
+      </p>
 
-      <section>
-        <h2>Privacy</h2>
-        <div className="check">
-          <input
-            id={ids.history}
-            type="checkbox"
-            checked={settings.history_enabled}
-            onChange={(e) => void save({ history_enabled: e.target.checked })}
-          />
-          <label htmlFor={ids.history}>Keep chat history</label>
+      <h2 className="group-title">Privacy</h2>
+      <div className="group">
+        <div className="form-row">
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.history}>
+              Keep chat history
+            </label>
+            <Switch
+              id={ids.history}
+              checked={settings.history_enabled}
+              onChange={(e) => void save({ history_enabled: e.target.checked })}
+            />
+          </div>
         </div>
-        <p className="muted">
-          Screen captures are only sent to the AI you pick above. mouce cannot open, change, or delete
-          your files.
-        </p>
-      </section>
+      </div>
+      <p className="group-footer">
+        Screen captures are only sent to the AI you pick above. mouce cannot open, change, or delete
+        your files.
+      </p>
 
-      <section>
-        <h2>Startup</h2>
-        <div className="check">
-          <input
-            id={ids.startup}
-            type="checkbox"
-            checked={autostart === true}
-            disabled={autostart === null || autostartBusy}
-            onChange={(e) => void onAutostart(e.target.checked)}
-          />
-          <label htmlFor={ids.startup}>Start mouce when Windows starts</label>
+      <h2 className="group-title">Startup</h2>
+      <div className="group">
+        <div className="form-row">
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.startup}>
+              Start mouce when Windows starts
+            </label>
+            <Switch
+              id={ids.startup}
+              checked={autostart === true}
+              disabled={autostart === null || autostartBusy}
+              onChange={(e) => void onAutostart(e.target.checked)}
+            />
+          </div>
+          {autostartError && <p role="alert" className="error">{autostartError}</p>}
         </div>
-        {autostartError && <p role="alert" className="error">{autostartError}</p>}
-      </section>
+      </div>
     </div>
   );
 }

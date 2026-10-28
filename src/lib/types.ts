@@ -29,6 +29,8 @@ export interface Settings {
   history_enabled: boolean;
   fallback_to_local: boolean;
   first_run_done: boolean;
+  /** Floating controls are drawn as Liquid Glass; off makes every surface solid. */
+  liquid_glass: boolean;
 }
 
 export type MouceState = "idle" | "thinking" | "looking" | "reminder";

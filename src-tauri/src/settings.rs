@@ -48,6 +48,8 @@ pub struct Settings {
     pub history_enabled: bool,
     pub fallback_to_local: bool,
     pub first_run_done: bool,
+    /// Draws the floating controls as Liquid Glass over a Mica window; off is solid.
+    pub liquid_glass: bool,
 }
 
 impl Default for Settings {
@@ -64,6 +66,7 @@ impl Default for Settings {
             history_enabled: false,
             fallback_to_local: true,
             first_run_done: false,
+            liquid_glass: true,
         }
     }
 }
@@ -126,6 +129,7 @@ mod tests {
         assert!(!d.history_enabled);
         assert!(d.fallback_to_local);
         assert!(!d.first_run_done);
+        assert!(d.liquid_glass);
         assert_eq!(MouceSize::Small.px(), 28);
         assert_eq!(MouceSize::Medium.px(), 36);
         assert_eq!(MouceSize::Large.px(), 48);
@@ -138,6 +142,15 @@ mod tests {
         assert_eq!(load(&s), Settings::default());
         s.set_kv("settings", "{not json").unwrap();
         assert_eq!(load(&s), Settings::default());
+    }
+
+    #[test]
+    fn settings_saved_before_liquid_glass_turn_it_on() {
+        let (_d, s) = store();
+        s.set_kv(SETTINGS_KEY, r#"{"provider":"groq","first_run_done":true}"#).unwrap();
+        let loaded = load(&s);
+        assert_eq!(loaded.provider, ProviderId::Groq);
+        assert!(loaded.liquid_glass);
     }
 
     #[test]
