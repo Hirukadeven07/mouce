@@ -156,10 +156,12 @@ mod tests {
     #[test]
     fn save_then_load_roundtrip() {
         let (_d, s) = store();
-        let mut x = Settings::default();
-        x.provider = ProviderId::Anthropic;
-        x.mouce_size = MouceSize::Small;
-        x.mouce_position = Some((10, 20));
+        let mut x = Settings {
+            provider: ProviderId::Anthropic,
+            mouce_size: MouceSize::Small,
+            mouce_position: Some((10, 20)),
+            ..Default::default()
+        };
         x.models.insert(ProviderId::OpenAi, "gpt-x".into());
         save(&s, &x).unwrap();
         assert_eq!(load(&s), x);
@@ -169,8 +171,7 @@ mod tests {
     fn partial_json_fills_defaults() {
         let (_d, s) = store();
         s.set_kv("settings", r#"{"provider":"groq"}"#).unwrap();
-        let mut expected = Settings::default();
-        expected.provider = ProviderId::Groq;
+        let expected = Settings { provider: ProviderId::Groq, ..Default::default() };
         assert_eq!(load(&s), expected);
     }
 }
