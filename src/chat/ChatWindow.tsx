@@ -12,6 +12,8 @@ import {
   getSettings,
   onChatAttachment,
   onSettingsChanged,
+  openHome,
+  openHomeChat,
 } from "../lib/ipc";
 import type { ChatTurn, Settings } from "../lib/types";
 import { PROVIDERS } from "../settings/AiSettings";
@@ -83,8 +85,23 @@ function Bubble(props: { turn: ChatTurn; note?: string; writing?: boolean }) {
   );
 }
 
-/** The chat panel beside the mouce: ask a question, optionally about the screen. */
+/** The chat panel beside the mouce. */
 export function ChatWindow() {
+  return <ChatView mode="panel" />;
+}
+
+/**
+ * The chat itself: ask a question, optionally about the screen. It is shown in the panel
+ * beside the mouce, or full size in the home window (`onPopOut` goes back to the panel).
+ * Both show the one conversation kept in Rust.
+ */
+export function ChatView(props: {
+  mode: "panel" | "full";
+  onPopOut?: () => void;
+  /** Put the cursor in the message box on opening. Off when arrowing through tabs past it. */
+  autoFocus?: boolean;
+}) {
+  const { mode, onPopOut, autoFocus = true } = props;
   const [settings, setSettings] = useState<Settings | null>(null);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   // Notes under answers ("stopped", "answered by the local AI"), by turn index.
@@ -98,6 +115,8 @@ export function ChatWindow() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mounted = useRef(true);
+  // Set while a question is being answered here; the other view may change the chat meanwhile.
+  const answering = useRef(false);
   const ids = { input: useId(), lookNote: useId(), circleNote: useId() };
 
   useEffect(() => {
@@ -119,9 +138,16 @@ export function ChatWindow() {
     chatHistory()
       .then((t) => mounted.current && setTurns(t))
       .catch((e) => mounted.current && setError(errorText(e)));
-    inputRef.current?.focus();
-    // Opened again with the shortcut or the mouce: be ready to type straight away.
-    const onFocus = () => inputRef.current?.focus();
+    if (autoFocus) inputRef.current?.focus();
+    // Opened again with the shortcut or the mouce: be ready to type straight away, and pick up
+    // anything asked in the other view (panel or home window) since this one last looked.
+    const onFocus = () => {
+      inputRef.current?.focus();
+      if (answering.current) return;
+      chatHistory()
+        .then((t) => mounted.current && !answering.current && setTurns(t))
+        .catch(() => {});
+    };
     window.addEventListener("focus", onFocus);
     return () => {
       mounted.current = false;
@@ -143,6 +169,7 @@ export function ChatWindow() {
     setDraft("");
     setLook(false);
     const question = text || (withScreen ? LOOK_QUESTION : CIRCLE_QUESTION);
+    answering.current = true;
     setPending({ question, looked: withScreen, circled, answer: "" });
     if (circled) setAttachment(null);
     let note: string | null = null;
@@ -172,6 +199,7 @@ export function ChatWindow() {
       const last = latest.length - 1;
       if (note && latest[last]?.role === "assistant") setNotes((n) => ({ ...n, [last]: note! }));
     }
+    answering.current = false;
     setPending(null);
     inputRef.current?.focus();
   }
@@ -194,10 +222,22 @@ export function ChatWindow() {
   const circleKeys = settings?.circle_hotkey;
 
   return (
-    <div className="chat" ref={scrollRef}>
+    <div className={"chat chat--" + mode} ref={scrollRef}>
       <header className="chat-header">
         <div className="chat-bar glass">
-          <img className="chat-avatar" src={logoUrl} alt="" width={26} height={26} />
+          {mode === "panel" ? (
+            <button
+              type="button"
+              className="chat-avatar"
+              aria-label="Open mouce home"
+              title="Open mouce home"
+              onClick={() => void openHome().catch(() => {})}
+            >
+              <img src={logoUrl} alt="" width={26} height={26} />
+            </button>
+          ) : (
+            <img className="chat-avatar-image" src={logoUrl} alt="" width={26} height={26} />
+          )}
           <div className="chat-title">
             <h1>mouce</h1>
             {settings && (
@@ -217,6 +257,31 @@ export function ChatWindow() {
           >
             <Icon name="compose" size={17} />
           </button>
+          {mode === "panel" ? (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Open full size in mouce home"
+              title={busy ? "Wait for the answer to finish" : "Open full size"}
+              onClick={() => void openHomeChat().catch(() => {})}
+              disabled={busy}
+            >
+              <Icon name="expand" size={16} />
+            </button>
+          ) : (
+            onPopOut && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Back to the small chat"
+                title={busy ? "Wait for the answer to finish" : "Back to the small chat"}
+                onClick={onPopOut}
+                disabled={busy}
+              >
+                <Icon name="shrink" size={16} />
+              </button>
+            )
+          )}
         </div>
       </header>
 

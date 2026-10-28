@@ -380,6 +380,37 @@ pub fn open_chat(app: &AppHandle) {
     open_or_build(app, CHAT_LABEL, build_chat);
 }
 
+/// What a click on the mouce opens.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ClickTarget {
+    Chat,
+    Home,
+}
+
+/// The first click opens the chat. With the chat already on screen, a click on the mouce
+/// is the way to the home window.
+pub fn click_target(chat_on_screen: bool) -> ClickTarget {
+    if chat_on_screen {
+        ClickTarget::Home
+    } else {
+        ClickTarget::Chat
+    }
+}
+
+/// Closes the chat panel, if it is open. The conversation lives on in Rust.
+pub fn close_chat(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(CHAT_LABEL) {
+        log_failure("close the chat panel", window.close());
+    }
+}
+
+/// Whether the chat panel is open and not minimised.
+pub fn chat_on_screen(app: &AppHandle) -> bool {
+    app.get_webview_window(CHAT_LABEL).is_some_and(|w| {
+        w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
+    })
+}
+
 /// The monitor the mouce is on (else the primary one), in physical pixels.
 pub fn screen_area(app: &AppHandle) -> Option<Rect> {
     let monitor = app
@@ -395,6 +426,7 @@ pub fn screen_area(app: &AppHandle) -> Option<Rect> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HomeTab {
     Home,
+    Chat,
     Settings,
 }
 
@@ -402,6 +434,7 @@ impl HomeTab {
     pub fn as_str(self) -> &'static str {
         match self {
             HomeTab::Home => "home",
+            HomeTab::Chat => "chat",
             HomeTab::Settings => "settings",
         }
     }
@@ -447,8 +480,15 @@ mod tests {
     }
 
     #[test]
+    fn a_click_opens_the_chat_first_and_home_once_the_chat_is_showing() {
+        assert_eq!(click_target(false), ClickTarget::Chat);
+        assert_eq!(click_target(true), ClickTarget::Home);
+    }
+
+    #[test]
     fn home_tabs_have_the_names_the_webview_expects() {
         assert_eq!(HomeTab::Home.as_str(), "home");
+        assert_eq!(HomeTab::Chat.as_str(), "chat");
         assert_eq!(HomeTab::Settings.as_str(), "settings");
     }
 

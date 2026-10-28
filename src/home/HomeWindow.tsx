@@ -7,7 +7,8 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { initialHomeTab, onHomeTab, openChat } from "../lib/ipc";
+import { ChatView } from "../chat/ChatWindow";
+import { closeChatPanel, initialHomeTab, onHomeTab, openChat } from "../lib/ipc";
 import type { HomeTabId } from "../lib/types";
 import { Settings } from "../settings/Settings";
 import { useSettings } from "../settings/useSettings";
@@ -19,6 +20,7 @@ import { HomeTab } from "./HomeTab";
 
 const TABS: Array<{ id: HomeTabId; label: string; icon: IconName }> = [
   { id: "home", label: "Home", icon: "home" },
+  { id: "chat", label: "Chat", icon: "chat" },
   { id: "calendar", label: "Calendar", icon: "calendar" },
   { id: "reminders", label: "Reminders", icon: "reminders" },
   { id: "customize", label: "Customize", icon: "customize" },
@@ -98,15 +100,27 @@ export function HomeWindow() {
   const now = useNow();
   const tabRefs = useRef<Partial<Record<HomeTabId, HTMLButtonElement | null>>>({});
   const { navRef, box, glide } = useLens(tab, tabRefs.current);
+  // Keyboard users arrowing through the tabs keep their place; the chat takes focus only when
+  // it is chosen by a click or moved here from the panel.
+  const [arrowed, setArrowed] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    const unlisten = onHomeTab((t) => alive && isTab(t) && setTab(t)).catch(() => null);
+    const unlisten = onHomeTab((t) => {
+      if (!alive || !isTab(t)) return;
+      setArrowed(false);
+      setTab(t);
+    }).catch(() => null);
     return () => {
       alive = false;
       unlisten.then((un) => un?.()).catch(() => {});
     };
   }, []);
+
+  // The chat shows here full size, so the small panel beside the mouce closes.
+  useEffect(() => {
+    if (tab === "chat") void closeChatPanel().catch(() => {});
+  }, [tab]);
 
   // Arrow keys move between tabs, in either direction the list is laid out.
   function onTabKey(e: KeyboardEvent<HTMLButtonElement>) {
@@ -119,6 +133,7 @@ export function HomeWindow() {
     if (next === null) return;
     e.preventDefault();
     const id = TABS[next].id;
+    setArrowed(true);
     setTab(id);
     tabRefs.current[id]?.focus();
   }
@@ -126,7 +141,7 @@ export function HomeWindow() {
   const label = TABS.find((t) => t.id === tab)?.label ?? "";
 
   return (
-    <div className="home">
+    <div className={"home" + (tab === "chat" ? " home--chat" : "")}>
       <nav className="home-sidebar" aria-label="mouce">
         <div className="home-nav glass" role="tablist" aria-orientation="vertical" ref={navRef}>
           {box && (
@@ -149,7 +164,10 @@ export function HomeWindow() {
                 aria-controls={`panel-${t.id}`}
                 tabIndex={tab === t.id ? 0 : -1}
                 className="nav-item"
-                onClick={() => setTab(t.id)}
+                onClick={() => {
+                  setArrowed(false);
+                  setTab(t.id);
+                }}
                 onKeyDown={onTabKey}
               >
                 <Icon name={t.icon} />
@@ -160,6 +178,7 @@ export function HomeWindow() {
         </div>
       </nav>
       <main className="home-main" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        {tab !== "chat" && (
         <header className="home-header">
           <div>
             <h1 className={tab === "home" ? "large-title" : "title"}>
@@ -174,7 +193,18 @@ export function HomeWindow() {
             </button>
           )}
         </header>
+        )}
         {tab === "home" && <HomeTab settings={settings} today={now} onNavigate={setTab} />}
+        {tab === "chat" && (
+          <ChatView
+            mode="full"
+            autoFocus={!arrowed}
+            onPopOut={() => {
+              setTab("home");
+              void openChat().catch(() => {});
+            }}
+          />
+        )}
         {tab === "calendar" && <CalendarTab today={now} />}
         {tab === "reminders" && <RemindersTab />}
         {tab === "customize" && <Customize />}

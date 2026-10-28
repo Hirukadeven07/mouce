@@ -87,6 +87,33 @@ describe("ChatWindow", () => {
     expect(await screen.findByText("Local · gemma3:4b")).toBeInTheDocument();
   });
 
+  it("the logo in the header opens the home window", async () => {
+    vi.mocked(ipc.openHome).mockResolvedValue();
+    render(<ChatWindow />);
+    await userEvent.click(screen.getByRole("button", { name: "Open mouce home" }));
+    expect(ipc.openHome).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves the chat full size into the home window", async () => {
+    vi.mocked(ipc.openHomeChat).mockResolvedValue();
+    render(<ChatWindow />);
+    await userEvent.click(screen.getByRole("button", { name: "Open full size in mouce home" }));
+    expect(ipc.openHomeChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("picks up questions asked in the other view when it gets focus", async () => {
+    render(<ChatWindow />);
+    await screen.findByText("Ask me anything");
+    saved = [
+      { role: "user", text: "asked in the home window", looked: false, circled: false },
+      { role: "assistant", text: "Answered there.", looked: false, circled: false },
+    ];
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(await screen.findByText("Answered there.")).toBeInTheDocument();
+  });
+
   it("sends with Enter and streams the answer in", async () => {
     answerWith(["Hel", "lo there"]);
     render(<ChatWindow />);
@@ -155,6 +182,8 @@ describe("ChatWindow", () => {
     expect(screen.getByLabelText("mouce is writing")).toBeInTheDocument();
     act(() => write("Part"));
     expect(screen.getByText("Part")).toBeInTheDocument();
+    // The answer streams to this view, so it cannot move to the other one until it is done.
+    expect(screen.getByRole("button", { name: "Open full size in mouce home" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Stop" }));
     expect(ipc.chatStop).toHaveBeenCalled();
     saved.push({ role: "assistant", text: "Part", looked: false, circled: false });

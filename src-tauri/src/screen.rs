@@ -15,7 +15,9 @@ use windows::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
     ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, SRCCOPY,
 };
-use windows::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE};
+use windows::Win32::UI::WindowsAndMessaging::{
+    SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
+};
 
 /// Longest side of the image sent to the AI. Providers downscale anything larger anyway,
 /// and a smaller image keeps requests quick.
@@ -59,6 +61,26 @@ pub fn exclude_from_capture(window: &tauri::WebviewWindow) -> tauri::Result<()> 
     // SAFETY: `hwnd` is the live handle of a window owned by this process.
     unsafe { SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) }
         .map_err(|e| tauri::Error::Io(std::io::Error::other(e)))
+}
+
+/// Leaves `window` out of screen copies until dropped, then lets it be copied again. For a
+/// window that should stay out of one picture only, not out of the user's own screenshots.
+pub struct CaptureExclusion(tauri::WebviewWindow);
+
+impl CaptureExclusion {
+    pub fn new(window: tauri::WebviewWindow) -> tauri::Result<CaptureExclusion> {
+        exclude_from_capture(&window)?;
+        Ok(CaptureExclusion(window))
+    }
+}
+
+impl Drop for CaptureExclusion {
+    fn drop(&mut self) {
+        if let Ok(hwnd) = self.0.hwnd() {
+            // SAFETY: `hwnd` is the live handle of a window owned by this process.
+            let _ = unsafe { SetWindowDisplayAffinity(hwnd, WDA_NONE) };
+        }
+    }
 }
 
 /// Copies the pixels of `area` (physical pixels, virtual-screen coordinates) as
