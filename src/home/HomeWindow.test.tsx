@@ -17,6 +17,7 @@ const baseSettings: Settings = {
   mouce_rotation: true,
   mouce_position: null,
   circle_hotkey: "Ctrl+Alt+Space",
+  chat_hotkey: "Ctrl+Alt+M",
   history_enabled: false,
   fallback_to_local: true,
   first_run_done: true,
@@ -44,6 +45,13 @@ describe("HomeWindow", () => {
     vi.mocked(ipc.listModels).mockResolvedValue([]);
     vi.mocked(ipc.getAutostart).mockResolvedValue(false);
     vi.mocked(ipc.onPullProgress).mockResolvedValue(() => {});
+  });
+
+  it("Ask mouce opens the chat", async () => {
+    vi.mocked(ipc.openChat).mockResolvedValue();
+    render(<HomeWindow />);
+    await userEvent.click(screen.getByRole("button", { name: "Ask mouce" }));
+    expect(ipc.openChat).toHaveBeenCalled();
   });
 
   describe("tabs", () => {

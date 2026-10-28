@@ -45,9 +45,59 @@ pub fn keep_inside(pos: (i32, i32), size_physical: u32, work_area: Rect) -> (i32
     (fit(pos.0, work_area.x, work_area.w), fit(pos.1, work_area.y, work_area.h))
 }
 
+/// Where a `panel_w` x `panel_h` panel goes next to `anchor` (the mouce): to its left if it
+/// fits, else to its right, bottom-aligned with it, and always inside `work_area`.
+pub fn panel_position(
+    anchor: Rect,
+    panel_w: u32,
+    panel_h: u32,
+    gap: i32,
+    work_area: Rect,
+) -> (i32, i32) {
+    let (left_edge, right_edge) = (work_area.x, work_area.x + work_area.w as i32);
+    let left = anchor.x - gap - panel_w as i32;
+    let right = anchor.x + anchor.w as i32 + gap;
+    let x = if left >= left_edge {
+        left
+    } else if right + panel_w as i32 <= right_edge {
+        right
+    } else {
+        left.max(left_edge)
+    };
+    let y = anchor.y + anchor.h as i32 - panel_h as i32;
+    let max_y = work_area.y + work_area.h as i32 - panel_h as i32;
+    (x.min(right_edge - panel_w as i32).max(left_edge), y.min(max_y).max(work_area.y))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const WA: Rect = Rect { x: 0, y: 0, w: 1920, h: 1040 };
+
+    #[test]
+    fn panel_goes_left_of_a_mouce_in_the_bottom_right_corner() {
+        let mouce = Rect { x: 1840, y: 960, w: 64, h: 64 };
+        assert_eq!(panel_position(mouce, 380, 520, 8, WA), (1452, 504));
+    }
+
+    #[test]
+    fn panel_goes_right_when_there_is_no_room_on_the_left() {
+        let mouce = Rect { x: 20, y: 600, w: 64, h: 64 };
+        assert_eq!(panel_position(mouce, 380, 520, 8, WA), (92, 144));
+    }
+
+    #[test]
+    fn panel_stays_inside_the_work_area() {
+        let near_top = Rect { x: 1000, y: 10, w: 64, h: 64 };
+        assert_eq!(panel_position(near_top, 380, 520, 8, WA), (612, 0));
+        let squeezed = Rect { x: 100, y: 500, w: 64, h: 64 };
+        let narrow = Rect { x: 0, y: 0, w: 400, h: 1040 };
+        assert_eq!(panel_position(squeezed, 380, 520, 8, narrow), (0, 44));
+        let offset = Rect { x: 1920, y: 0, w: 1280, h: 1000 };
+        let mouce = Rect { x: 3100, y: 900, w: 64, h: 64 };
+        assert_eq!(panel_position(mouce, 380, 520, 8, offset), (2712, 444));
+    }
 
     #[test]
     fn keep_inside_pulls_overflowing_mouce_back() {

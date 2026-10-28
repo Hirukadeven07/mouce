@@ -18,6 +18,14 @@ async function root(): Promise<React.ReactElement> {
       const { HomeWindow } = await import("./home/HomeWindow");
       return <HomeWindow />;
     }
+    case "chat": {
+      document.documentElement.classList.add("page-window");
+      await import("./settings/settings.css");
+      await import("./home/home.css");
+      await import("./chat/chat.css");
+      const { ChatWindow } = await import("./chat/ChatWindow");
+      return <ChatWindow />;
+    }
     case "firstrun": {
       document.documentElement.classList.add("page-window");
       await import("./settings/settings.css");

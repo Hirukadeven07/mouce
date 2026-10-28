@@ -116,6 +116,11 @@ impl AppStore {
         Ok(())
     }
 
+    pub fn delete_kv(&self, key: &str) -> Result<(), StoreError> {
+        self.connection().execute("DELETE FROM kv WHERE key = ?1", params![key])?;
+        Ok(())
+    }
+
     /// Shared connection for later milestones' tables.
     pub fn connection(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner())

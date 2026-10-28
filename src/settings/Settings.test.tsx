@@ -16,6 +16,7 @@ const baseSettings: Settings = {
   mouce_rotation: true,
   mouce_position: null,
   circle_hotkey: "Ctrl+Alt+Space",
+  chat_hotkey: "Ctrl+Alt+M",
   history_enabled: false,
   fallback_to_local: true,
   first_run_done: true,
@@ -84,9 +85,11 @@ describe("Settings", () => {
     vi.mocked(ipc.hasApiKey).mockResolvedValue(true);
     await renderSettings();
     await screen.findByText("Key saved");
-    const fields = document.querySelectorAll<HTMLInputElement>(
-      "input:not([type=checkbox]):not([type=radio])",
-    );
+    // Every field but the chat shortcut (which shows its saved value) must be empty.
+    const shortcut = screen.getByLabelText("Open the chat from any app");
+    const fields = [
+      ...document.querySelectorAll<HTMLInputElement>("input:not([type=checkbox]):not([type=radio])"),
+    ].filter((f) => f !== shortcut);
     expect(fields.length).toBeGreaterThan(0);
     fields.forEach((f) => expect(f.value).toBe(""));
   });
@@ -182,6 +185,33 @@ describe("Settings", () => {
 
     await act(async () => finish({ ...baseSettings, history_enabled: true }));
     expect(history()).toBeChecked();
+  });
+
+  it("saves a new chat shortcut", async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+    const input = screen.getByLabelText("Open the chat from any app");
+    expect(input).toHaveValue("Ctrl+Alt+M");
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
+    await user.clear(input);
+    await user.type(input, " Ctrl+Shift+K ");
+    await user.click(save);
+    expect(ipc.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ chat_hotkey: "Ctrl+Shift+K" }),
+    );
+    await waitFor(() => expect(save).toBeDisabled());
+  });
+
+  it("shows why a chat shortcut was refused and keeps the saved one", async () => {
+    const user = userEvent.setup();
+    vi.mocked(ipc.updateSettings).mockRejectedValue("mouce couldn't use Ctrl+Alt+Q: taken");
+    await renderSettings();
+    const input = screen.getByLabelText("Open the chat from any app");
+    await user.clear(input);
+    await user.type(input, "Ctrl+Alt+Q{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("couldn't use Ctrl+Alt+Q");
+    await waitFor(() => expect(input).toHaveValue("Ctrl+Alt+M"));
   });
 
   it("shows the privacy sentence", async () => {

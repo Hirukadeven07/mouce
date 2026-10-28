@@ -37,13 +37,19 @@ your own API key.
 
 - **Stays out of your way.** Small, transparent and always on top. It never steals focus,
   stays out of the taskbar and Alt+Tab, and remembers where you dragged it.
+- **Chat beside your work.** Click mouce, or press **Ctrl+Alt+M** from any app (you can
+  change the shortcut in Settings), to open a small chat panel next to it. Answers
+  stream in as they're written, and you can stop one at any time.
+- **Look at my screen.** Press "Look at my screen" and mouce takes one picture of the screen
+  it's on, so you can ask about whatever is in front of you.
 - **Shows what it's doing.** It sways gently when idle, moves faster while thinking, dims and
   pulses while looking, and glows when something needs your attention.
 - **Your choice of AI.** Run a local model on your own machine, or bring a key for OpenAI,
   Groq, Gemini or Claude. If the online AI fails, it can fall back to the local one.
 - **Guided first run.** Detects whether Ollama is installed and running, and downloads a
   starter model only after you confirm.
-- **Tray controls.** Open Settings, pause or show mouce, or quit, all from the system tray.
+- **Tray controls.** Open mouce or the chat, open Settings, pause or show mouce, or quit,
+  all from the system tray.
 - **Adjustable.** Small, medium or large size, sway on or off, and an optional start with
   Windows.
 
@@ -55,6 +61,7 @@ computer.
 | Guarantee | How it's enforced |
 | --- | --- |
 | No file, process, clipboard or input access | The app contains no file-write, process-launch, clipboard-write or input-synthesis code. An automated scan ([`src-tauri/tests/safety_scan.rs`](src-tauri/tests/safety_scan.rs)) fails the build if such APIs, extra capabilities or extra permissions appear. |
+| Looks only when you ask | mouce takes a picture of your screen only when you press "Look at my screen". The picture stays in memory, goes only to the AI you picked, and is never saved; saved chat history keeps text only. |
 | Writes only to its own folder | A single storage module writes to disk, and only inside the app's data folder. |
 | API keys stay secret | Keys are stored in Windows Credential Manager. They are written from Settings and read only by the Rust backend to reach the provider you picked; they never reach the web view. |
 | No surprise browsing | The only address the app ever opens in your browser is the Ollama download page. |
@@ -108,7 +115,7 @@ tray.
 
 - [x] **Skeleton and safety:** companion window, tray, settings, AI provider layer, secure key
       storage, capability lockdown, safety scan, first run
-- [ ] **Chat:** a panel next to mouce with streaming answers and "Look at my screen"
+- [x] **Chat:** a panel next to mouce with streaming answers and "Look at my screen"
 - [ ] **Circle to look up:** draw around anything on screen and ask about it
 - [ ] **Dictionary:** Ctrl + right-click a word for its meaning, with an offline fallback
 - [ ] **Calendar and reminders:** add events in plain language, confirm before saving, and get

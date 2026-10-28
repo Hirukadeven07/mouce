@@ -16,6 +16,7 @@ const baseSettings: Settings = {
   mouce_rotation: true,
   mouce_position: null,
   circle_hotkey: "Ctrl+Alt+Space",
+  chat_hotkey: "Ctrl+Alt+M",
   history_enabled: false,
   fallback_to_local: true,
   first_run_done: false,

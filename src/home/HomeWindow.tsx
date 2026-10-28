@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import logoUrl from "../assets/mouce.png";
-import { initialHomeTab, onHomeTab } from "../lib/ipc";
+import { initialHomeTab, onHomeTab, openChat } from "../lib/ipc";
 import type { HomeTabId } from "../lib/types";
 import { Settings } from "../settings/Settings";
 import { useSettings } from "../settings/useSettings";
@@ -72,6 +72,9 @@ export function HomeWindow() {
         <p className="home-greeting">
           {greeting(now)} · {longDate(now)}
         </p>
+        <button type="button" className="ai-change" onClick={() => void openChat().catch(() => {})}>
+          Ask mouce
+        </button>
       </header>
       <div className="home-tabs" role="tablist" aria-label="mouce">
         {TABS.map((t) => (

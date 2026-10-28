@@ -318,7 +318,7 @@ fn capabilities_grant_only_allowlist() {
     assert!(!files.is_empty(), "no capability files found");
 
     let mut granted = std::collections::BTreeSet::new();
-    let expected_windows = serde_json::json!(["mouce", "home", "firstrun"]);
+    let expected_windows = serde_json::json!(["mouce", "home", "firstrun", "chat"]);
 
     for path in &files {
         let name = path.display();
@@ -339,7 +339,7 @@ fn capabilities_grant_only_allowlist() {
         assert_eq!(
             value.get("windows"),
             Some(&expected_windows),
-            "{name}: capability windows must be exactly mouce, home, firstrun"
+            "{name}: capability windows must be exactly mouce, home, firstrun, chat"
         );
         let perms = value
             .get("permissions")
@@ -386,7 +386,12 @@ fn tauri_conf_has_no_inline_capabilities() {
 /// The Win32 API areas the `windows` crate may expose. Adding one (for example file system,
 /// shell, clipboard/data exchange or keyboard and mouse input) must be a deliberate edit of
 /// this list, reviewed against the safety promise.
-const WINDOWS_FEATURES: &[&str] = &["Win32_Foundation", "Win32_UI_WindowsAndMessaging"];
+///
+/// `Win32_Graphics_Gdi` is here for "Look at my screen": `screen.rs` copies screen pixels
+/// into a memory bitmap. GDI draws and reads pixels; it cannot touch files, input or the
+/// other programs' windows.
+const WINDOWS_FEATURES: &[&str] =
+    &["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"];
 
 /// The `features` of the single `windows = { ... }` dependency in a Cargo.toml.
 fn windows_features(cargo: &str) -> Result<Vec<String>, String> {
