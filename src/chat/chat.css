@@ -32,8 +32,14 @@ html.page-window #root {
   border-radius: 16px;
 }
 
-.chat-avatar {
+/* The logo is the way home: a round button that shows its fill only on hover and press. */
+html.page-window button.chat-avatar {
   flex: none;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
 }
 
 .chat-title {

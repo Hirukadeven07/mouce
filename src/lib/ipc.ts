@@ -104,6 +104,10 @@ export function openChat(): Promise<void> {
   return invoke<void>("open_chat");
 }
 
+export function openHome(): Promise<void> {
+  return invoke<void>("open_home");
+}
+
 export function chatHistory(): Promise<ChatTurn[]> {
   return invoke<ChatTurn[]>("chat_history");
 }

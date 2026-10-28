@@ -68,10 +68,14 @@ fn log_best_effort<E: std::fmt::Display>(
     }
 }
 
-/// The mouce was clicked (not dragged): open the chat beside it.
+/// The mouce was clicked (not dragged): open the chat beside it, or, when the chat is
+/// already showing, the home window.
 #[tauri::command]
 pub fn mouce_clicked(app: AppHandle) {
-    mouce::open_chat(&app);
+    match mouce::click_target(mouce::chat_on_screen(&app)) {
+        mouce::ClickTarget::Chat => mouce::open_chat(&app),
+        mouce::ClickTarget::Home => mouce::open_home(&app, mouce::HomeTab::Home),
+    }
 }
 
 // ---- settings ----
@@ -533,6 +537,12 @@ pub fn chat_clear(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 pub fn open_chat(app: AppHandle) {
     mouce::open_chat(&app);
+}
+
+/// Opens the home window on its Home tab (the logo in the chat header).
+#[tauri::command]
+pub fn open_home(app: AppHandle) {
+    mouce::open_home(&app, mouce::HomeTab::Home);
 }
 
 /// The preview of the circled area waiting to be asked about, if there is one.

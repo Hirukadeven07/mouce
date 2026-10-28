@@ -87,6 +87,13 @@ describe("ChatWindow", () => {
     expect(await screen.findByText("Local · gemma3:4b")).toBeInTheDocument();
   });
 
+  it("the logo in the header opens the home window", async () => {
+    vi.mocked(ipc.openHome).mockResolvedValue();
+    render(<ChatWindow />);
+    await userEvent.click(screen.getByRole("button", { name: "Open mouce home" }));
+    expect(ipc.openHome).toHaveBeenCalledTimes(1);
+  });
+
   it("sends with Enter and streams the answer in", async () => {
     answerWith(["Hel", "lo there"]);
     render(<ChatWindow />);

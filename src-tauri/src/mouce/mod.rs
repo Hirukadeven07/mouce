@@ -380,6 +380,30 @@ pub fn open_chat(app: &AppHandle) {
     open_or_build(app, CHAT_LABEL, build_chat);
 }
 
+/// What a click on the mouce opens.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ClickTarget {
+    Chat,
+    Home,
+}
+
+/// The first click opens the chat. With the chat already on screen, a click on the mouce
+/// is the way to the home window.
+pub fn click_target(chat_on_screen: bool) -> ClickTarget {
+    if chat_on_screen {
+        ClickTarget::Home
+    } else {
+        ClickTarget::Chat
+    }
+}
+
+/// Whether the chat panel is open and not minimised.
+pub fn chat_on_screen(app: &AppHandle) -> bool {
+    app.get_webview_window(CHAT_LABEL).is_some_and(|w| {
+        w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
+    })
+}
+
 /// The monitor the mouce is on (else the primary one), in physical pixels.
 pub fn screen_area(app: &AppHandle) -> Option<Rect> {
     let monitor = app
@@ -444,6 +468,12 @@ mod tests {
         let opening = OpeningWindows::default();
         opening.finish(HOME_LABEL);
         assert!(opening.try_begin(HOME_LABEL));
+    }
+
+    #[test]
+    fn a_click_opens_the_chat_first_and_home_once_the_chat_is_showing() {
+        assert_eq!(click_target(false), ClickTarget::Chat);
+        assert_eq!(click_target(true), ClickTarget::Home);
     }
 
     #[test]

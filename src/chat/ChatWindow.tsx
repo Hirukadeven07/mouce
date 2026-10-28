@@ -12,6 +12,7 @@ import {
   getSettings,
   onChatAttachment,
   onSettingsChanged,
+  openHome,
 } from "../lib/ipc";
 import type { ChatTurn, Settings } from "../lib/types";
 import { PROVIDERS } from "../settings/AiSettings";
@@ -197,7 +198,15 @@ export function ChatWindow() {
     <div className="chat" ref={scrollRef}>
       <header className="chat-header">
         <div className="chat-bar glass">
-          <img className="chat-avatar" src={logoUrl} alt="" width={26} height={26} />
+          <button
+            type="button"
+            className="chat-avatar"
+            aria-label="Open mouce home"
+            title="Open mouce home"
+            onClick={() => void openHome().catch(() => {})}
+          >
+            <img src={logoUrl} alt="" width={26} height={26} />
+          </button>
           <div className="chat-title">
             <h1>mouce</h1>
             {settings && (

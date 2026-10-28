@@ -173,6 +173,7 @@ pub fn run() -> Result<(), String> {
             commands::chat_stop,
             commands::chat_clear,
             commands::open_chat,
+            commands::open_home,
             commands::chat_attachment,
             commands::chat_discard_attachment,
             commands::circle_start,
