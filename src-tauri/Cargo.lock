@@ -2355,7 +2355,7 @@ name = "mouce"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "futures-util",
  "image",
  "keyring",
@@ -2372,7 +2372,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.21",
  "tokio",
  "url",
  "windows",
