@@ -217,9 +217,10 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/v1/models"))
             .and(header("authorization", "Bearer sk-test"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(
-                r#"{"data":[{"id":"zeta"},{"id":"alpha"},{"id":"mid"}]}"#,
-            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"data":[{"id":"zeta"},{"id":"alpha"},{"id":"mid"}]}"#),
+            )
             .mount(&server)
             .await;
         let provider = OpenAiCompat::new(server.uri(), "sk-test".into());
@@ -230,9 +231,10 @@ mod tests {
     async fn openai_compat_401_maps_to_http_error() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(401).set_body_string(
-                r#"{"error":{"message":"Incorrect API key provided"}}"#,
-            ))
+            .respond_with(
+                ResponseTemplate::new(401)
+                    .set_body_string(r#"{"error":{"message":"Incorrect API key provided"}}"#),
+            )
             .mount(&server)
             .await;
         let provider = OpenAiCompat::new(server.uri(), "sk-secret-value".into());

@@ -5,12 +5,8 @@ use futures_util::StreamExt;
 use std::time::Duration;
 use url::{Host, Url};
 
-const REMOTE_HOSTS: &[&str] = &[
-    "api.openai.com",
-    "api.groq.com",
-    "generativelanguage.googleapis.com",
-    "api.anthropic.com",
-];
+const REMOTE_HOSTS: &[&str] =
+    &["api.openai.com", "api.groq.com", "generativelanguage.googleapis.com", "api.anthropic.com"];
 
 const MAX_REDIRECTS: usize = 10;
 const MAX_ERROR_MESSAGE_CHARS: usize = 300;
@@ -292,8 +288,11 @@ mod tests {
 
     #[test]
     fn secret_header_rejects_unsendable_keys_without_echoing_them() {
-        let err = secret_header("bad
-key-123").unwrap_err();
+        let err = secret_header(
+            "bad
+key-123",
+        )
+        .unwrap_err();
         assert!(!err.to_string().contains("key-123"));
         assert!(matches!(err, AiError::Network(_)));
     }
@@ -499,12 +498,15 @@ key-123").unwrap_err();
 
     #[tokio::test]
     async fn read_stream_stops_at_stop_and_ignores_later_lines() {
-        let (_server, resp) = body_response("one
+        let (_server, resp) = body_response(
+            "one
 two
 STOP
 ignored
 also ignored
-").await;
+",
+        )
+        .await;
         let mut seen = Vec::new();
         read_stream(resp, |line| {
             seen.push(line.to_string());
@@ -517,10 +519,13 @@ also ignored
 
     #[tokio::test]
     async fn read_stream_propagates_line_error_and_stops() {
-        let (_server, resp) = body_response("ok
+        let (_server, resp) = body_response(
+            "ok
 bad
 never
-").await;
+",
+        )
+        .await;
         let mut seen = Vec::new();
         let err = read_stream(resp, |line| {
             seen.push(line.to_string());
@@ -538,8 +543,11 @@ never
 
     #[tokio::test]
     async fn read_stream_delivers_final_unterminated_line() {
-        let (_server, resp) = body_response("first
-last").await;
+        let (_server, resp) = body_response(
+            "first
+last",
+        )
+        .await;
         let mut seen = Vec::new();
         read_stream(resp, |line| {
             seen.push(line.to_string());

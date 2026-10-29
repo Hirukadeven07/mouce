@@ -2,7 +2,7 @@
 
 pub mod position;
 
-use crate::settings::{self, Settings, MouceSize};
+use crate::settings::{self, MouceSize, Settings};
 use position::{clamp_to_monitors, default_position, keep_inside, panel_position, Rect};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -406,9 +406,8 @@ pub fn close_chat(app: &AppHandle) {
 
 /// Whether the chat panel is open and not minimised.
 pub fn chat_on_screen(app: &AppHandle) -> bool {
-    app.get_webview_window(CHAT_LABEL).is_some_and(|w| {
-        w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false)
-    })
+    app.get_webview_window(CHAT_LABEL)
+        .is_some_and(|w| w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false))
 }
 
 /// The monitor the mouce is on (else the primary one), in physical pixels.

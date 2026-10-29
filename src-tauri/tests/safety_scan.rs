@@ -53,13 +53,8 @@ const FORBIDDEN_EVERYWHERE: &[&str] = &[
     "TargetKind::Folder",
 ];
 
-const FORBIDDEN_IN_STORE: &[&str] = &[
-    "fs::remove",
-    "fs::rename",
-    "fs::copy",
-    "Command::new",
-    "std::process",
-];
+const FORBIDDEN_IN_STORE: &[&str] =
+    &["fs::remove", "fs::rename", "fs::copy", "Command::new", "std::process"];
 
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -162,28 +157,17 @@ fn no_forbidden_apis_outside_store() {
     assert!(!all.is_empty(), "scan found no Rust source files");
     let (in_store, outside): (Vec<_>, Vec<_>) =
         all.into_iter().partition(|p| p.starts_with(&store));
-    assert!(
-        outside.contains(&src.join("lib.rs")),
-        "scan did not cover src/lib.rs"
-    );
-    assert!(
-        !in_store.is_empty(),
-        "scan did not cover any file under src/store/"
-    );
+    assert!(outside.contains(&src.join("lib.rs")), "scan did not cover src/lib.rs");
+    assert!(!in_store.is_empty(), "scan did not cover any file under src/store/");
 
     let mut failures = scan(&outside, FORBIDDEN_EVERYWHERE, &root);
     failures.extend(scan_std_groups(&outside, &root));
     failures.extend(scan(&in_store, FORBIDDEN_IN_STORE, &root));
     // The store may use `fs`, but a group must not smuggle in `process`.
-    failures.extend(
-        scan_std_groups(&in_store, &root).into_iter().filter(|h| h.contains("process")),
-    );
+    failures
+        .extend(scan_std_groups(&in_store, &root).into_iter().filter(|h| h.contains("process")));
 
-    assert!(
-        failures.is_empty(),
-        "forbidden APIs found:\n{}",
-        failures.join("\n")
-    );
+    assert!(failures.is_empty(), "forbidden APIs found:\n{}", failures.join("\n"));
 }
 
 #[test]
@@ -220,11 +204,7 @@ fn no_forbidden_dependencies() {
         }
     }
 
-    assert!(
-        failures.is_empty(),
-        "forbidden dependencies found:\n{}",
-        failures.join("\n")
-    );
+    assert!(failures.is_empty(), "forbidden dependencies found:\n{}", failures.join("\n"));
 }
 
 #[test]
@@ -272,9 +252,15 @@ fn opener_is_only_used_for_the_fixed_download_url() {
             }
         }
     }
-    assert!(failures.is_empty(), "opener guard failed:
-{}", failures.join("
-"));
+    assert!(
+        failures.is_empty(),
+        "opener guard failed:
+{}",
+        failures.join(
+            "
+"
+        )
+    );
 
     // lib.rs still registers the plugin.
     let lib = fs::read_to_string(&lib_rs).unwrap();
@@ -303,10 +289,7 @@ fn capability_files(dir: &Path, out: &mut Vec<PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             capability_files(&path, out);
-        } else if path
-            .extension()
-            .is_some_and(|e| e == "json" || e == "json5" || e == "toml")
-        {
+        } else if path.extension().is_some_and(|e| e == "json" || e == "json5" || e == "toml") {
             out.push(path);
         }
     }
@@ -371,18 +354,15 @@ fn capabilities_grant_only_allowlist() {
 
 #[test]
 fn tauri_conf_has_no_inline_capabilities() {
-    let text = fs::read_to_string(manifest_dir().join("tauri.conf.json"))
-        .expect("read tauri.conf.json");
+    let text =
+        fs::read_to_string(manifest_dir().join("tauri.conf.json")).expect("read tauri.conf.json");
     let conf: serde_json::Value = serde_json::from_str(&text).expect("parse tauri.conf.json");
     let inline = conf.pointer("/app/security/capabilities");
     let empty = match inline {
         None => true,
         Some(v) => v.as_array().is_some_and(|a| a.is_empty()),
     };
-    assert!(
-        empty,
-        "tauri.conf.json must not define inline app.security.capabilities: {inline:?}"
-    );
+    assert!(empty, "tauri.conf.json must not define inline app.security.capabilities: {inline:?}");
 }
 
 /// The Win32 API areas the `windows` crate may expose. Adding one (for example file system,
@@ -477,8 +457,8 @@ fn asset_protocol_check_flags_an_enabled_protocol() {
 
 #[test]
 fn tauri_conf_security_is_locked_down() {
-    let text = fs::read_to_string(manifest_dir().join("tauri.conf.json"))
-        .expect("read tauri.conf.json");
+    let text =
+        fs::read_to_string(manifest_dir().join("tauri.conf.json")).expect("read tauri.conf.json");
     let conf: serde_json::Value = serde_json::from_str(&text).expect("parse tauri.conf.json");
 
     if let Some(problem) = asset_protocol_problem(&conf) {

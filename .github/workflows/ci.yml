@@ -28,6 +28,18 @@ jobs:
       - run: npm run build
       - run: npx vitest run
 
+  rustfmt:
+    name: Rust formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --check
+
   rust:
     name: Rust (clippy, tests, safety scan)
     # The backend uses Win32 APIs and Windows Credential Manager.

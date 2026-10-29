@@ -86,10 +86,7 @@ impl AppStore {
             "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
             [],
         )?;
-        Ok(AppStore {
-            root,
-            conn: Mutex::new(conn),
-        })
+        Ok(AppStore { root, conn: Mutex::new(conn) })
     }
 
     /// Returns the canonical form of `p` only if it is inside the app dir.
@@ -101,9 +98,7 @@ impl AppStore {
     pub fn get_kv(&self, key: &str) -> Result<Option<String>, StoreError> {
         Ok(self
             .connection()
-            .query_row("SELECT value FROM kv WHERE key = ?1", params![key], |r| {
-                r.get(0)
-            })
+            .query_row("SELECT value FROM kv WHERE key = ?1", params![key], |r| r.get(0))
             .optional()?)
     }
 
@@ -156,10 +151,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = AppStore::open(dir.path().to_path_buf()).unwrap();
         let traversal = dir.path().join("..").join("evil.txt");
-        assert!(matches!(
-            store.guard_path(&traversal),
-            Err(StoreError::OutsideAppDir(_))
-        ));
+        assert!(matches!(store.guard_path(&traversal), Err(StoreError::OutsideAppDir(_))));
         assert!(matches!(
             store.guard_path(Path::new(r"C:\Windows\win.ini")),
             Err(StoreError::OutsideAppDir(_))
@@ -185,10 +177,7 @@ mod tests {
     fn guard_rejects_root_itself() {
         let dir = tempfile::tempdir().unwrap();
         let store = AppStore::open(dir.path().to_path_buf()).unwrap();
-        assert!(matches!(
-            store.guard_path(dir.path()),
-            Err(StoreError::OutsideAppDir(_))
-        ));
+        assert!(matches!(store.guard_path(dir.path()), Err(StoreError::OutsideAppDir(_))));
         assert!(matches!(
             store.guard_path(&dir.path().join(".")),
             Err(StoreError::OutsideAppDir(_))
@@ -208,10 +197,7 @@ mod tests {
             return;
         }
         assert!(!target.exists());
-        assert!(matches!(
-            store.guard_path(&link),
-            Err(StoreError::OutsideAppDir(_))
-        ));
+        assert!(matches!(store.guard_path(&link), Err(StoreError::OutsideAppDir(_))));
     }
 
     #[test]

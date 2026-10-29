@@ -60,10 +60,7 @@ async fn status_with_timeout(base_url: &str, exe_hint: &Path, limit: Duration) -
 async fn fetch_models(base_url: &str) -> Result<Vec<String>, AiError> {
     let url = endpoint(base_url, "/api/tags")?;
     let resp = net::send(net::client().get(url.clone()), &url).await?;
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| AiError::Parse(e.without_url().to_string()))?;
+    let text = resp.text().await.map_err(|e| AiError::Parse(e.without_url().to_string()))?;
     let v: Value = serde_json::from_str(&text)
         .map_err(|_| AiError::Parse("unreadable model list".to_string()))?;
     let models = v
@@ -86,25 +83,16 @@ pub async fn pull(
     on_progress: &mut (dyn FnMut(PullProgress) + Send),
 ) -> Result<(), AiError> {
     let url = endpoint(base_url, "/api/pull")?;
-    let req = net::client()
-        .post(url.clone())
-        .json(&json!({ "model": model, "stream": true }));
+    let req = net::client().post(url.clone()).json(&json!({ "model": model, "stream": true }));
     let resp = net::send(req, &url).await?;
     let mut finished = false;
     net::read_stream(resp, |line| {
         let v: Value = serde_json::from_str(line)
             .map_err(|_| AiError::Parse("unreadable line in Ollama download".to_string()))?;
         if let Some(message) = v.get("error").and_then(Value::as_str) {
-            return Err(AiError::Http {
-                status: 500,
-                message: message.to_string(),
-            });
+            return Err(AiError::Http { status: 500, message: message.to_string() });
         }
-        let status = v
-            .get("status")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
+        let status = v.get("status").and_then(Value::as_str).unwrap_or_default().to_string();
         let done = status == "success";
         on_progress(PullProgress {
             status,
@@ -122,9 +110,7 @@ pub async fn pull(
     if finished {
         Ok(())
     } else {
-        Err(AiError::Network(
-            "download ended before it finished".to_string(),
-        ))
+        Err(AiError::Network("download ended before it finished".to_string()))
     }
 }
 
@@ -140,10 +126,8 @@ mod tests {
     #[test]
     fn status_json_shape() {
         assert_eq!(
-            serde_json::to_value(OllamaStatus::Running {
-                models: vec!["gemma3:4b".into()]
-            })
-            .unwrap(),
+            serde_json::to_value(OllamaStatus::Running { models: vec!["gemma3:4b".into()] })
+                .unwrap(),
             json!({ "state": "running", "models": ["gemma3:4b"] })
         );
         assert_eq!(
@@ -158,11 +142,7 @@ mod tests {
 
     #[test]
     fn progress_json_shape() {
-        let p = PullProgress {
-            status: "pulling".into(),
-            completed: Some(1),
-            total: None,
-        };
+        let p = PullProgress { status: "pulling".into(), completed: Some(1), total: None };
         assert_eq!(
             serde_json::to_value(p).unwrap(),
             json!({ "status": "pulling", "completed": 1, "total": null })
@@ -186,29 +166,21 @@ mod tests {
         let s = status(&format!("{}/", server.uri()), hint).await;
         assert_eq!(
             s,
-            OllamaStatus::Running {
-                models: vec!["gemma3:4b".into(), "llama3:8b".into()]
-            }
+            OllamaStatus::Running { models: vec!["gemma3:4b".into(), "llama3:8b".into()] }
         );
     }
 
     #[tokio::test]
     async fn status_not_running_when_connection_refused() {
         let hint = tempfile::NamedTempFile::new().unwrap();
-        assert_eq!(
-            status(DEAD_BASE, hint.path()).await,
-            OllamaStatus::NotRunning
-        );
+        assert_eq!(status(DEAD_BASE, hint.path()).await, OllamaStatus::NotRunning);
     }
 
     #[tokio::test]
     async fn status_not_installed_when_no_exe() {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("ollama.exe");
-        assert_eq!(
-            status(DEAD_BASE, &missing).await,
-            OllamaStatus::NotInstalled
-        );
+        assert_eq!(status(DEAD_BASE, &missing).await, OllamaStatus::NotInstalled);
     }
 
     #[tokio::test]
@@ -235,10 +207,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("ollama.exe");
         for _ in 0..3 {
-            assert_eq!(
-                status(&server.uri(), &missing).await,
-                OllamaStatus::NotRunning
-            );
+            assert_eq!(status(&server.uri(), &missing).await, OllamaStatus::NotRunning);
         }
     }
 
@@ -273,19 +242,14 @@ mod tests {
     async fn status_does_not_contact_disallowed_host() {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("ollama.exe");
-        assert_eq!(
-            status("https://evil.com", &missing).await,
-            OllamaStatus::NotRunning
-        );
+        assert_eq!(status("https://evil.com", &missing).await, OllamaStatus::NotRunning);
     }
 
     async fn pull_server(body: &str) -> MockServer {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/api/pull"))
-            .and(body_partial_json(
-                json!({ "model": "gemma3:4b", "stream": true }),
-            ))
+            .and(body_partial_json(json!({ "model": "gemma3:4b", "stream": true })))
             .respond_with(ResponseTemplate::new(200).set_body_string(body))
             .expect(1)
             .mount(&server)
@@ -304,17 +268,11 @@ mod tests {
         )
         .await;
         let mut seen: Vec<PullProgress> = Vec::new();
-        pull(&server.uri(), DEFAULT_LOCAL_MODEL, &mut |p| seen.push(p))
-            .await
-            .unwrap();
+        pull(&server.uri(), DEFAULT_LOCAL_MODEL, &mut |p| seen.push(p)).await.unwrap();
         assert_eq!(seen.len(), 4, "{seen:?}");
         assert_eq!(
             seen[0],
-            PullProgress {
-                status: "pulling manifest".into(),
-                completed: None,
-                total: None
-            }
+            PullProgress { status: "pulling manifest".into(), completed: None, total: None }
         );
         assert_eq!(seen[1].completed, Some(10));
         assert_eq!(seen[1].total, Some(100));
@@ -329,9 +287,8 @@ mod tests {
         )
         .await;
         let mut seen = Vec::new();
-        let err = pull(&server.uri(), DEFAULT_LOCAL_MODEL, &mut |p| seen.push(p))
-            .await
-            .unwrap_err();
+        let err =
+            pull(&server.uri(), DEFAULT_LOCAL_MODEL, &mut |p| seen.push(p)).await.unwrap_err();
         assert_eq!(
             err,
             AiError::Http {
@@ -346,18 +303,14 @@ mod tests {
     async fn pull_stream_ending_without_success_is_error() {
         let server =
             pull_server("{\"status\":\"downloading\",\"completed\":1,\"total\":9}\n").await;
-        let err = pull(&server.uri(), DEFAULT_LOCAL_MODEL, &mut |_| {})
-            .await
-            .unwrap_err();
+        let err = pull(&server.uri(), DEFAULT_LOCAL_MODEL, &mut |_| {}).await.unwrap_err();
         assert!(matches!(err, AiError::Network(_)), "{err:?}");
     }
 
     #[tokio::test]
     async fn pull_unreadable_line_is_parse_error() {
         let server = pull_server("not json\n").await;
-        let err = pull(&server.uri(), DEFAULT_LOCAL_MODEL, &mut |_| {})
-            .await
-            .unwrap_err();
+        let err = pull(&server.uri(), DEFAULT_LOCAL_MODEL, &mut |_| {}).await.unwrap_err();
         assert!(matches!(err, AiError::Parse(_)), "{err:?}");
     }
 
@@ -368,15 +321,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(404).set_body_string(r#"{"error":"nope"}"#))
             .mount(&server)
             .await;
-        let err = pull(&server.uri(), DEFAULT_LOCAL_MODEL, &mut |_| {})
-            .await
-            .unwrap_err();
-        assert_eq!(
-            err,
-            AiError::Http {
-                status: 404,
-                message: "nope".into()
-            }
-        );
+        let err = pull(&server.uri(), DEFAULT_LOCAL_MODEL, &mut |_| {}).await.unwrap_err();
+        assert_eq!(err, AiError::Http { status: 404, message: "nope".into() });
     }
 }

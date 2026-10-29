@@ -7,10 +7,10 @@
 
 use crate::mouce::position::Rect;
 use base64::Engine as _;
-use serde::Deserialize;
 use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
 use image::{ExtendedColorType, ImageBuffer, Rgb};
+use serde::Deserialize;
 use windows::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
     ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, SRCCOPY,
@@ -167,12 +167,7 @@ pub fn encode(bgra: &[u8], w: u32, h: u32, max_edge: u32) -> Result<ScreenImage,
     if bgra.len() != w as usize * h as usize * 4 {
         return Err("The screen image has the wrong size".to_string());
     }
-    let rgb: Vec<u8> = bgra
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .flat_map(|p| [p[2], p[1], p[0]])
-        .collect();
+    let rgb: Vec<u8> = bgra.as_chunks::<4>().0.iter().flat_map(|p| [p[2], p[1], p[0]]).collect();
     let full: ImageBuffer<Rgb<u8>, Vec<u8>> =
         ImageBuffer::from_raw(w, h, rgb).ok_or("The screen image has the wrong size")?;
     let (tw, th) = fit_within(w, h, max_edge);
@@ -221,12 +216,7 @@ pub fn selection_rect(sel: Selection, width: u32, height: u32, padding: u32) -> 
     let pad = padding as f64;
     let (left, top) = ((left - pad).max(0.0), (top - pad).max(0.0));
     let (right, bottom) = ((right + pad).min(w), (bottom + pad).min(h));
-    Some(Rect {
-        x: left as i32,
-        y: top as i32,
-        w: (right - left) as u32,
-        h: (bottom - top) as u32,
-    })
+    Some(Rect { x: left as i32, y: top as i32, w: (right - left) as u32, h: (bottom - top) as u32 })
 }
 
 /// The pixels of `area` cut out of a frame. `area` must lie inside it.
@@ -307,9 +297,7 @@ mod tests {
         let bgra: Vec<u8> = (0..w * h).flat_map(|_| [255u8, 0, 0, 255]).collect();
         let img = encode(&bgra, w, h, 16).unwrap();
         assert_eq!((img.width, img.height), (16, 8));
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(&img.base64)
-            .unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD.decode(&img.base64).unwrap();
         assert_eq!(&bytes[..2], &[0xFF, 0xD8], "JPEG start-of-image marker");
     }
 
