@@ -61,12 +61,13 @@ fn guard_in(root: &Path, p: &Path) -> Result<PathBuf, StoreError> {
 
 /// Stops SQL run through `AppStore::connection()` from reaching files outside
 /// the app dir: no attached databases (limit) and ATTACH/DETACH denied (authorizer).
-fn harden(conn: &mut Connection) {
-    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0);
+/// If either cannot be set, the store must not open.
+fn harden(conn: &mut Connection) -> rusqlite::Result<()> {
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     conn.authorizer(Some(|ctx: AuthContext<'_>| match ctx.action {
         AuthAction::Attach { .. } | AuthAction::Detach { .. } => Authorization::Deny,
         _ => Authorization::Allow,
-    }));
+    }))
 }
 
 pub struct AppStore {
@@ -81,7 +82,7 @@ impl AppStore {
         let root = root.canonicalize()?;
         let db_path = guard_in(&root, &root.join("mouce.db"))?;
         let mut conn = Connection::open(db_path)?;
-        harden(&mut conn);
+        harden(&mut conn)?;
         conn.execute(
             "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
             [],
@@ -226,22 +227,22 @@ mod tests {
         let attach = format!("ATTACH DATABASE '{}' AS x", x.display());
 
         let limit_only = Connection::open_in_memory().unwrap();
-        limit_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0);
+        limit_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0).unwrap();
         assert!(limit_only.execute_batch(&attach).is_err());
         let mut auth_only = Connection::open_in_memory().unwrap();
-        harden(&mut auth_only);
-        auth_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 10);
+        harden(&mut auth_only).unwrap();
+        auth_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 10).unwrap();
         assert!(auth_only.execute_batch(&attach).is_err());
         assert!(!x.exists());
 
         let y = outside.path().join("y.db");
         let vacuum = format!("VACUUM INTO '{}'", y.display());
         let limit_only = Connection::open_in_memory().unwrap();
-        limit_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0);
+        limit_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0).unwrap();
         assert!(limit_only.execute_batch(&vacuum).is_err());
         let mut auth_only = Connection::open_in_memory().unwrap();
-        harden(&mut auth_only);
-        auth_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 10);
+        harden(&mut auth_only).unwrap();
+        auth_only.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 10).unwrap();
         assert!(auth_only.execute_batch(&vacuum).is_err());
         assert!(!y.exists());
     }
