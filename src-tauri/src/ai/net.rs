@@ -109,9 +109,55 @@ fn map_send_error(e: reqwest::Error) -> AiError {
     AiError::Network(e.without_url().to_string())
 }
 
+/// How a busy or rate-limited provider is retried.
+struct Retry {
+    /// Tries in all, the first one included.
+    attempts: u32,
+    /// The wait before the first retry; it doubles for each one after.
+    first_delay: Duration,
+    /// A longer wait (from `Retry-After` or the doubling) gives up instead: the user is
+    /// watching, and an error that says why is better than a silent minute.
+    max_wait: Duration,
+}
+
+const RETRY: Retry =
+    Retry { attempts: 3, first_delay: Duration::from_secs(1), max_wait: Duration::from_secs(10) };
+
+/// "Busy, try again soon": rate limited, bad gateway, unavailable, gateway timeout, and
+/// Anthropic's "overloaded".
+fn is_retryable(status: reqwest::StatusCode) -> bool {
+    matches!(status.as_u16(), 429 | 502 | 503 | 504 | 529)
+}
+
+/// The `Retry-After` header in its seconds form; the HTTP-date form is ignored and the
+/// doubling wait is used instead.
+fn retry_after(resp: &reqwest::Response) -> Option<Duration> {
+    let value = resp.headers().get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
+    value.trim().parse::<u64>().ok().map(Duration::from_secs)
+}
+
+/// The wait before retry number `retry` (0 for the first), or `None` when it is too long.
+/// One user's app never sends a burst, so the waits need no random jitter.
+fn retry_delay(retry: u32, retry_after: Option<Duration>, policy: &Retry) -> Option<Duration> {
+    let delay = retry_after.unwrap_or(policy.first_delay * 2u32.saturating_pow(retry));
+    (delay <= policy.max_wait).then_some(delay)
+}
+
 /// Sends `req` (which must target `url`) after checking the allowlist on both
 /// `url` and the request's real URL; non-2xx becomes `AiError::Http`.
+///
+/// A busy or rate-limited answer (see `is_retryable`) is retried up to `RETRY.attempts`
+/// times. That happens before the response body is read, so no answer text is ever
+/// repeated; a request whose body cannot be copied is sent only once.
 pub async fn send(req: reqwest::RequestBuilder, url: &Url) -> Result<reqwest::Response, AiError> {
+    send_with(req, url, &RETRY).await
+}
+
+async fn send_with(
+    req: reqwest::RequestBuilder,
+    url: &Url,
+    retry: &Retry,
+) -> Result<reqwest::Response, AiError> {
     check_allowed(url)?;
     let (client, request) = req.build_split();
     let request = request.map_err(|e| AiError::Network(e.without_url().to_string()))?;
@@ -123,11 +169,31 @@ pub async fn send(req: reqwest::RequestBuilder, url: &Url) -> Result<reqwest::Re
             url.host_str().unwrap_or("unknown host")
         )));
     }
-    let resp = client.execute(request).await.map_err(map_send_error)?;
-    if resp.status().is_success() {
-        Ok(resp)
-    } else {
-        Err(error_from_response(resp).await)
+    let mut request = request;
+    let mut retries = 0;
+    loop {
+        let copy = if retries + 1 < retry.attempts { request.try_clone() } else { None };
+        let resp = client.execute(request).await.map_err(map_send_error)?;
+        if resp.status().is_success() {
+            return Ok(resp);
+        }
+        let wait = if is_retryable(resp.status()) {
+            retry_delay(retries, retry_after(&resp), retry)
+        } else {
+            None
+        };
+        let (Some(next), Some(wait)) = (copy, wait) else {
+            return Err(error_from_response(resp).await);
+        };
+        log::info!(
+            "{} answered {}, trying again in {wait:?}",
+            url.host_str().unwrap_or("the AI"),
+            resp.status()
+        );
+        drop(resp);
+        tokio::time::sleep(wait).await;
+        request = next;
+        retries += 1;
     }
 }
 
@@ -370,8 +436,110 @@ key-123",
         assert_eq!(err, AiError::Http { status: 401, message: "invalid x-api-key".into() });
         assert_eq!(err.to_string(), "HTTP 401: invalid x-api-key");
 
-        let err = send(client().get(url.clone()), &url).await.unwrap_err();
+        // Still rate limited after every retry: the provider's message is shown.
+        let err = send_with(client().get(url.clone()), &url, &FAST).await.unwrap_err();
         assert_eq!(err, AiError::Http { status: 429, message: "slow down".into() });
+    }
+
+    /// The real policy's shape with waits short enough for tests.
+    const FAST: Retry = Retry {
+        attempts: 3,
+        first_delay: Duration::from_millis(1),
+        max_wait: Duration::from_millis(50),
+    };
+
+    #[test]
+    fn retry_delay_doubles_honours_retry_after_and_gives_up_when_too_long() {
+        assert_eq!(retry_delay(0, None, &RETRY), Some(Duration::from_secs(1)));
+        assert_eq!(retry_delay(1, None, &RETRY), Some(Duration::from_secs(2)));
+        assert_eq!(
+            retry_delay(0, Some(Duration::from_secs(7)), &RETRY),
+            Some(Duration::from_secs(7))
+        );
+        assert_eq!(retry_delay(0, Some(Duration::from_secs(60)), &RETRY), None);
+        assert_eq!(retry_delay(10, None, &RETRY), None);
+    }
+
+    #[test]
+    fn only_busy_statuses_are_retried() {
+        for code in [429, 502, 503, 504, 529] {
+            assert!(is_retryable(reqwest::StatusCode::from_u16(code).unwrap()), "{code}");
+        }
+        for code in [400, 401, 403, 404, 500] {
+            assert!(!is_retryable(reqwest::StatusCode::from_u16(code).unwrap()), "{code}");
+        }
+    }
+
+    #[tokio::test]
+    async fn busy_provider_is_retried_until_it_answers() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(529).set_body_string("overloaded"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(503))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+            .mount(&server)
+            .await;
+
+        let url = u(&server.uri());
+        let req = client().post(url.clone()).json(&serde_json::json!({"q": 1}));
+        let resp = send_with(req, &url, &FAST).await.unwrap();
+        assert_eq!(resp.text().await.unwrap(), "ok");
+        let received = server.received_requests().await.unwrap();
+        assert_eq!(received.len(), 3);
+        assert!(received.iter().all(|r| r.body == br#"{"q":1}"#), "every try sends the body");
+    }
+
+    #[tokio::test]
+    async fn retries_stop_after_the_last_attempt() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("busy"))
+            .mount(&server)
+            .await;
+        let url = u(&server.uri());
+        let err = send_with(client().get(url.clone()), &url, &FAST).await.unwrap_err();
+        assert_eq!(err, AiError::Http { status: 503, message: "busy".into() });
+        assert_eq!(request_count(&server).await, 3);
+    }
+
+    #[tokio::test]
+    async fn other_errors_are_not_retried() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET")).respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        let url = u(&server.uri());
+        send_with(client().get(url.clone()), &url, &FAST).await.unwrap_err();
+        assert_eq!(request_count(&server).await, 1);
+    }
+
+    #[tokio::test]
+    async fn retry_after_is_honoured_and_a_long_one_is_not_waited_out() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "0"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(429)
+                    .insert_header("retry-after", "60")
+                    .set_body_string("try again in a minute"),
+            )
+            .mount(&server)
+            .await;
+        let url = u(&server.uri());
+        let err = send_with(client().get(url.clone()), &url, &FAST).await.unwrap_err();
+        assert_eq!(err, AiError::Http { status: 429, message: "try again in a minute".into() });
+        // The "0" was retried at once; the 60 s one gave up instead of waiting.
+        assert_eq!(request_count(&server).await, 2);
     }
 
     #[tokio::test]
