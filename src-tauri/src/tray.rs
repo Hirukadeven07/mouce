@@ -80,11 +80,7 @@ fn toggle_mouce(app: &AppHandle, pause_item: &MenuItem<tauri::Wry>) {
     // `is_visible` asks Windows itself (IsWindowVisible), so it stays correct even though
     // the mouce is shown and hidden with raw Win32 calls (see `mouce::show_without_focus`).
     let next = toggle_for(window.is_visible().unwrap_or(true));
-    let result = if next.show {
-        mouce::show_without_focus(&window)
-    } else {
-        mouce::hide(&window)
-    };
+    let result = if next.show { mouce::show_without_focus(&window) } else { mouce::hide(&window) };
     match result {
         Ok(()) => {
             let _ = pause_item.set_text(next.label);

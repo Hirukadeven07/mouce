@@ -60,10 +60,7 @@ pub struct Conversation {
 
 impl Conversation {
     pub fn from_turns(turns: Vec<Turn>) -> Conversation {
-        Conversation {
-            turns,
-            screen: None,
-        }
+        Conversation { turns, screen: None }
     }
 
     pub fn turns(&self) -> &[Turn] {
@@ -75,43 +72,24 @@ impl Conversation {
         if let Some(image) = screen {
             self.screen = Some((self.turns.len(), image));
         }
-        self.turns.push(Turn {
-            role: TurnRole::User,
-            text,
-            looked,
-            circled: false,
-        });
+        self.turns.push(Turn { role: TurnRole::User, text, looked, circled: false });
     }
 
     /// Adds a question about a circled part of the screen.
     pub fn push_user_circled(&mut self, text: String, image: ImageInput) {
         self.screen = Some((self.turns.len(), image));
-        self.turns.push(Turn {
-            role: TurnRole::User,
-            text,
-            looked: false,
-            circled: true,
-        });
+        self.turns.push(Turn { role: TurnRole::User, text, looked: false, circled: true });
     }
 
     pub fn push_assistant(&mut self, text: String) {
-        self.turns.push(Turn {
-            role: TurnRole::Assistant,
-            text,
-            looked: false,
-            circled: false,
-        });
+        self.turns.push(Turn { role: TurnRole::Assistant, text, looked: false, circled: false });
     }
 
     /// Takes back the last question when it got no answer, so it can be asked again.
     pub fn drop_unanswered(&mut self) {
         if self.turns.last().is_some_and(|t| t.role == TurnRole::User) {
             self.turns.pop();
-            if self
-                .screen
-                .as_ref()
-                .is_some_and(|(i, _)| *i == self.turns.len())
-            {
+            if self.screen.as_ref().is_some_and(|(i, _)| *i == self.turns.len()) {
                 self.screen = None;
             }
         }
@@ -126,11 +104,7 @@ impl Conversation {
     /// every provider expects.
     pub fn request(&self, model: String) -> ChatRequest {
         let mut start = self.turns.len().saturating_sub(SENT_MESSAGES);
-        while self
-            .turns
-            .get(start)
-            .is_some_and(|t| t.role != TurnRole::User)
-        {
+        while self.turns.get(start).is_some_and(|t| t.role != TurnRole::User) {
             start += 1;
         }
         let messages = self.turns[start..]
@@ -183,10 +157,7 @@ mod tests {
     use super::*;
 
     fn image() -> ImageInput {
-        ImageInput {
-            mime: "image/jpeg".into(),
-            base64: "QUJD".into(),
-        }
+        ImageInput { mime: "image/jpeg".into(), base64: "QUJD".into() }
     }
 
     fn store() -> (tempfile::TempDir, AppStore) {
@@ -205,18 +176,10 @@ mod tests {
         assert_eq!(req.model, "m");
         assert_eq!(req.system.as_deref(), Some(SYSTEM_PROMPT));
         assert_eq!(req.max_tokens, MAX_TOKENS);
-        let texts: Vec<_> = req
-            .messages
-            .iter()
-            .map(|m| (m.role, m.text.as_str()))
-            .collect();
+        let texts: Vec<_> = req.messages.iter().map(|m| (m.role, m.text.as_str())).collect();
         assert_eq!(
             texts,
-            vec![
-                (Role::User, "hi"),
-                (Role::Assistant, "hello"),
-                (Role::User, "what now?")
-            ]
+            vec![(Role::User, "hi"), (Role::Assistant, "hello"), (Role::User, "what now?")]
         );
     }
 
@@ -229,12 +192,8 @@ mod tests {
         c.push_assistant("b".into());
         c.push_user("and that button?".into(), None);
         let req = c.request("m".into());
-        let with_images: Vec<_> = req
-            .messages
-            .iter()
-            .filter(|m| !m.images.is_empty())
-            .map(|m| &m.text)
-            .collect();
+        let with_images: Vec<_> =
+            req.messages.iter().filter(|m| !m.images.is_empty()).map(|m| &m.text).collect();
         assert_eq!(with_images, vec!["look 2"]);
         assert!(c.turns()[0].looked && c.turns()[2].looked && !c.turns()[4].looked);
     }
@@ -261,11 +220,7 @@ mod tests {
             c.push_assistant(format!("a{i}"));
             c.push_user(format!("q{i}"), None);
         }
-        assert!(c
-            .request("m".into())
-            .messages
-            .iter()
-            .all(|m| m.images.is_empty()));
+        assert!(c.request("m".into()).messages.iter().all(|m| m.images.is_empty()));
     }
 
     #[test]
@@ -276,11 +231,7 @@ mod tests {
         c.push_user("look".into(), Some(image()));
         c.drop_unanswered();
         assert_eq!(c.turns().len(), 2);
-        assert!(c
-            .request("m".into())
-            .messages
-            .iter()
-            .all(|m| m.images.is_empty()));
+        assert!(c.request("m".into()).messages.iter().all(|m| m.images.is_empty()));
         c.drop_unanswered();
         assert_eq!(c.turns().len(), 2, "an answered question stays");
     }

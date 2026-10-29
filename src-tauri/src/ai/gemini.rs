@@ -111,11 +111,8 @@ fn parse_line(line: &str) -> Result<ParsedLine, AiError> {
         });
     }
     let parts = v.pointer("/candidates/0/content/parts").and_then(Value::as_array);
-    let text: String = parts
-        .into_iter()
-        .flatten()
-        .filter_map(|p| p.get("text").and_then(Value::as_str))
-        .collect();
+    let text: String =
+        parts.into_iter().flatten().filter_map(|p| p.get("text").and_then(Value::as_str)).collect();
     let block = v.pointer("/promptFeedback/blockReason").and_then(Value::as_str);
     let finish = v
         .get("candidates")

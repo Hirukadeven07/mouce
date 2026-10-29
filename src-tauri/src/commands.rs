@@ -16,9 +16,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::sync::Notify;
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_opener::OpenerExt as _;
+use tokio::sync::Notify;
 
 /// Event to the webview while a model downloads: payload is a `PullProgress`.
 pub const PULL_PROGRESS_EVENT: &str = "ollama-pull-progress";
@@ -223,9 +223,7 @@ fn build_provider(
 fn model_for(settings: &Settings, provider: ProviderId) -> Result<String, String> {
     match settings.models.get(&provider).map(|m| m.trim()).filter(|m| !m.is_empty()) {
         Some(m) => Ok(m.to_string()),
-        None if provider == ProviderId::Ollama => {
-            Ok(ollama_setup::DEFAULT_LOCAL_MODEL.to_string())
-        }
+        None if provider == ProviderId::Ollama => Ok(ollama_setup::DEFAULT_LOCAL_MODEL.to_string()),
         None => Err("Pick a model in Settings first".to_string()),
     }
 }
@@ -341,7 +339,10 @@ async fn ask_with_fallback(
         Err(e)
             if !wrote && settings.provider != ProviderId::Ollama && settings.fallback_to_local =>
         {
-            log::warn!("{:?} could not answer, asking the local AI instead: {e}", settings.provider);
+            log::warn!(
+                "{:?} could not answer, asking the local AI instead: {e}",
+                settings.provider
+            );
             match ask(state, settings, ProviderId::Ollama, on_chunk).await {
                 Ok(text) => Ok((text, true)),
                 Err(local) => Err(format!("{e} (the local AI could not answer either: {local})")),
@@ -736,11 +737,11 @@ pub fn finish_first_run(app: AppHandle, state: State<'_, AppState>) -> Result<()
 mod tests {
     use super::*;
     use crate::ollama_setup::OllamaStatus;
-    use crate::settings::{ProviderId, Settings, MouceSize};
+    use crate::settings::{MouceSize, ProviderId, Settings};
     use crate::store::AppStore;
     use crate::AppState;
-    use std::path::Path;
     use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::path::Path;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::time::Duration;
@@ -835,10 +836,8 @@ mod tests {
                 .map(|i| {
                     let st = st.clone();
                     std::thread::spawn(move || {
-                        let s = Settings {
-                            circle_hotkey: format!("Ctrl+{i}"),
-                            ..Default::default()
-                        };
+                        let s =
+                            Settings { circle_hotkey: format!("Ctrl+{i}"), ..Default::default() };
                         update_settings_impl(&st, s).unwrap();
                     })
                 })
@@ -1055,9 +1054,7 @@ mod tests {
         let server = MockServer::start().await;
         mount_pull(
             &server,
-            ResponseTemplate::new(200)
-                .set_body_string(PULL_OK)
-                .set_delay(Duration::from_secs(5)),
+            ResponseTemplate::new(200).set_body_string(PULL_OK).set_delay(Duration::from_secs(5)),
             1,
         )
         .await;
@@ -1434,13 +1431,12 @@ mod tests {
     fn saved_history_is_loaded_when_the_app_starts() {
         let dir = tempfile::tempdir().unwrap();
         let store = AppStore::open(dir.path().to_path_buf()).unwrap();
-        let turns =
-            vec![chat::Turn {
-                role: chat::TurnRole::User,
-                text: "hi".into(),
-                looked: false,
-                circled: false,
-            }];
+        let turns = vec![chat::Turn {
+            role: chat::TurnRole::User,
+            text: "hi".into(),
+            looked: false,
+            circled: false,
+        }];
         chat::save_history(&store, &turns).unwrap();
         let on = AppState::new(
             store,
