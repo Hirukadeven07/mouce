@@ -1,0 +1,74 @@
+name: Release
+
+# Pushing a version tag (for example `v0.2.0`) builds the Windows installer and attaches
+# it to a draft GitHub Release. Nothing is published until someone reviews the draft
+# and presses Publish.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    name: Build installer
+    runs-on: windows-latest
+    # The release profile uses full LTO, which makes the final link slow.
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the app version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./package.json').version")
+          conf=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -n 1)
+          echo "tag $tag, package.json $pkg, tauri.conf.json $conf, Cargo.toml $cargo"
+          if [ "$tag" != "$pkg" ] || [ "$tag" != "$conf" ] || [ "$tag" != "$cargo" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the version in all three files"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+
+      # Code signing goes here once there is a certificate; until then Windows
+      # SmartScreen warns that the publisher is unknown.
+      - name: Build the installer
+        run: npm run tauri build
+
+      - name: Write a checksum
+        id: files
+        working-directory: src-tauri/target/release/bundle/nsis
+        run: |
+          installer=$(ls *-setup.exe)
+          sha256sum "$installer" > "$installer.sha256"
+          cat "$installer.sha256"
+          echo "installer=$installer" >> "$GITHUB_OUTPUT"
+
+      - name: Attach to a draft release
+        working-directory: src-tauri/target/release/bundle/nsis
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSTALLER: ${{ steps.files.outputs.installer }}
+        run: |
+          files=("$INSTALLER" "$INSTALLER.sha256")
+          # Re-running the workflow for the same tag replaces the files on its draft.
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --draft --title "mouce $GITHUB_REF_NAME" --generate-notes
+          fi

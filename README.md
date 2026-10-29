@@ -85,8 +85,9 @@ sent anywhere you didn't pick.
 
 ## Getting started
 
-mouce runs on Windows 11. There are no prebuilt installers yet, so for now you build it from
-source.
+mouce runs on Windows 11. Installers are published on the
+[Releases page](https://github.com/Hirukadeven07/mouce/releases), each with a `.sha256`
+checksum. Until the first release is out, build it from source.
 
 ### Build from source
 
@@ -120,6 +121,16 @@ If something goes wrong, mouce records it in `%LOCALAPPDATA%\com.mouce.app\logs\
 (paste that path into File Explorer's address bar). The log holds start-up lines, warnings,
 errors and crash details; it never contains your chats, screen pictures or API keys. It keeps
 at most three files of about 1 MB each, replacing the oldest.
+
+### Making a release
+
+1. Set the same new version in `package.json`, `src-tauri/tauri.conf.json` and
+   `src-tauri/Cargo.toml`, and merge that change.
+2. Tag the merged commit on `main` and push the tag:
+   `git tag v0.2.0 && git push origin v0.2.0`
+3. The **Release** workflow checks that the tag matches all three versions, builds the
+   installer and attaches it, with its checksum, to a **draft** release.
+4. Review the draft on the Releases page, edit the notes, and press **Publish**.
 
 ## Roadmap
 
