@@ -163,7 +163,7 @@ pub fn update_settings(
     if size_changed {
         // The settings are already saved; a window that could not resize is not an error.
         let resized = mouce::resize(&app, saved.mouce_size);
-        log_best_effort("resize the mouce after saving settings", resized, |m| eprintln!("{m}"));
+        log_best_effort("resize the mouce after saving settings", resized, |m| log::warn!("{m}"));
     }
     if saved.liquid_glass != glass_before {
         mouce::set_glass(&app, saved.liquid_glass);
@@ -341,6 +341,7 @@ async fn ask_with_fallback(
         Err(e)
             if !wrote && settings.provider != ProviderId::Ollama && settings.fallback_to_local =>
         {
+            log::warn!("{:?} could not answer, asking the local AI instead: {e}", settings.provider);
             match ask(state, settings, ProviderId::Ollama, on_chunk).await {
                 Ok(text) => Ok((text, true)),
                 Err(local) => Err(format!("{e} (the local AI could not answer either: {local})")),
@@ -448,6 +449,8 @@ where
                 ChatReply { text, stopped: false, used_local }
             }
             Some(Err(e)) => {
+                // The error only, never the question: chat text stays out of the log.
+                log::warn!("the AI could not answer: {e}");
                 chat.drop_unanswered();
                 return Err(e);
             }
@@ -463,7 +466,7 @@ where
         }
     };
     // The answer is already shown; a history that could not be saved is not an error.
-    log_best_effort("save the chat history", persist_chat(state), |m| eprintln!("{m}"));
+    log_best_effort("save the chat history", persist_chat(state), |m| log::warn!("{m}"));
     Ok(reply)
 }
 
@@ -724,7 +727,7 @@ pub fn finish_first_run(app: AppHandle, state: State<'_, AppState>) -> Result<()
     let _ = app.emit(mouce::SETTINGS_CHANGED_EVENT, &saved);
     if let Some(window) = app.get_webview_window(mouce::FIRSTRUN_LABEL) {
         // First run is already saved as done; a window that would not close is not an error.
-        log_best_effort("close the first-run window", window.close(), |m| eprintln!("{m}"));
+        log_best_effort("close the first-run window", window.close(), |m| log::warn!("{m}"));
     }
     Ok(())
 }

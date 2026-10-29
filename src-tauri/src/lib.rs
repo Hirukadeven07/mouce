@@ -106,6 +106,7 @@ fn on_shortcut(app: &tauri::AppHandle, pressed: &tauri_plugin_global_shortcut::S
 
 /// Opens the data folder and creates the windows. Any error is reported by the caller.
 fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("mouce {} starting", app.package_info().version);
     let data_dir = app.path().app_data_dir()?;
     let store = AppStore::open(data_dir.clone()).map_err(|e| {
         format!("mouce could not open its data folder at {}: {e}", data_dir.display())
@@ -117,13 +118,51 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Another app may already own a shortcut; mouce still works without it.
     for (what, keys) in [("chat", &settings.chat_hotkey), ("circle", &settings.circle_hotkey)] {
         if let Err(e) = hotkey::register(app.handle(), keys) {
-            eprintln!("could not set up the {what} shortcut: {e}");
+            log::warn!("could not set up the {what} shortcut: {e}");
         }
     }
     if !settings.first_run_done {
         mouce::open_firstrun(app.handle());
     }
     Ok(())
+}
+
+/// Keeps this many log files: the current one plus older, rotated ones.
+const LOG_FILES_KEPT: usize = 3;
+/// A log file is rotated once it grows past this size.
+const LOG_FILE_MAX_BYTES: u128 = 1024 * 1024;
+
+/// Writes warnings and errors (and a line when mouce starts) to `mouce.log` in the app's
+/// own log folder, `%LOCALAPPDATA%\com.mouce.app\logs`, so a problem on someone else's PC
+/// can be looked into. Chat text, screen pictures and API keys are never logged.
+fn log_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    use log::LevelFilter;
+    use tauri_plugin_log::{Builder, RotationStrategy, Target, TargetKind, TimezoneStrategy};
+    let own = if cfg!(debug_assertions) { LevelFilter::Debug } else { LevelFilter::Info };
+    Builder::new()
+        .clear_targets()
+        .target(Target::new(TargetKind::LogDir { file_name: Some("mouce".into()) }))
+        // Release builds have no console; this only shows in `tauri dev`.
+        .target(Target::new(TargetKind::Stderr))
+        // Other crates are chatty below warnings.
+        .level(LevelFilter::Warn)
+        .level_for("mouce_lib", own)
+        .max_file_size(LOG_FILE_MAX_BYTES)
+        .rotation_strategy(RotationStrategy::KeepSome(LOG_FILES_KEPT))
+        .timezone_strategy(TimezoneStrategy::UseLocal)
+        .build()
+}
+
+/// Under the windows subsystem a panic has no console to print to, so record it in the
+/// log first, then let the default hook run.
+fn log_panics() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let thread = std::thread::current();
+        log::error!("panic in thread '{}': {info}", thread.name().unwrap_or("unnamed"));
+        log::logger().flush();
+        default(info);
+    }));
 }
 
 /// Where Windows keeps this app's data, for the error box when no app handle exists yet.
@@ -134,8 +173,11 @@ fn fallback_data_dir() -> Option<std::path::PathBuf> {
 /// Runs the app. An `Err` means it could not start; the user has already been told in a
 /// message box, and returning it from `main` gives a non-zero exit code.
 pub fn run() -> Result<(), String> {
+    log_panics();
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| on_second_launch(app)))
+        // Registered from Rust only; no window is granted the plugin's `log` command.
+        .plugin(log_plugin())
         // Both plugins are driven only from our own commands; no window is granted
         // their permissions (see capabilities/default.json).
         .plugin(tauri_plugin_autostart::init(
@@ -188,6 +230,7 @@ pub fn run() -> Result<(), String> {
             // A setup error would make Tauri panic, which under the windows subsystem is a
             // silent crash. Say what went wrong, then ask the app to exit with code 1.
             if let Err(e) = start(app) {
+                log::error!("mouce could not start: {e}");
                 let dir = app.path().app_data_dir().ok();
                 startup::show_startup_error(&e.to_string(), dir.as_deref());
                 app.handle().exit(1);

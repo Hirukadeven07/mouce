@@ -56,10 +56,10 @@ impl Secrets {
     }
 
     /// Whether a key is stored. "Not found" is a quiet `false`; any other credential
-    /// store error is reported on stderr (its message only, never a key) and also
+    /// store error is reported in the log (its message only, never a key) and also
     /// reads as `false`.
     pub fn has_key(&self, p: ProviderId) -> bool {
-        key_present(self.get_key(p), |msg| eprintln!("could not check the {p:?} key: {msg}"))
+        key_present(self.get_key(p), |msg| log::warn!("could not check the {p:?} key: {msg}"))
     }
 
     pub fn clear_key(&self, p: ProviderId) -> Result<(), SecretError> {

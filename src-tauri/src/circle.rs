@@ -34,7 +34,7 @@ pub fn start(app: &AppHandle) {
     // Windows can deadlock when a window is built from the event-loop thread; build elsewhere.
     tauri::async_runtime::spawn(async move {
         if let Err(e) = begin(&app).await {
-            eprintln!("could not start circling: {e}");
+            log::warn!("could not start circling: {e}");
             ended(&app);
         }
     });
@@ -130,7 +130,7 @@ pub fn close_layer(app: &AppHandle) {
     match app.get_webview_window(mouce::CIRCLE_LABEL) {
         Some(layer) => {
             if let Err(e) = layer.close() {
-                eprintln!("could not close the circle layer: {e}");
+                log::warn!("could not close the circle layer: {e}");
                 ended(app);
             }
         }

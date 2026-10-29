@@ -49,6 +49,8 @@ const FORBIDDEN_EVERYWHERE: &[&str] = &[
     "ValuePattern",
     // Any `fs::` path (`fs::write`, `use std::fs`, `tokio::fs`, ...) outside the store.
     "fs::",
+    // The log may only be written to the app's own log folder (`TargetKind::LogDir`).
+    "TargetKind::Folder",
 ];
 
 const FORBIDDEN_IN_STORE: &[&str] = &[
