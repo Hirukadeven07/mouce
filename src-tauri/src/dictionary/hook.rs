@@ -18,7 +18,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetMessageW, KillTimer, SetTimer, SetWindowsHookExW, UnhookWindowsHookEx,
     HC_ACTION, LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_MBUTTONDOWN,
-    WM_RBUTTONDOWN, WM_RBUTTONUP, WM_XBUTTONDOWN,
+    WM_MOUSEHWHEEL, WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_XBUTTONDOWN,
 };
 
 /// A point on the screen, in physical pixels.
@@ -33,8 +33,8 @@ pub struct Point {
 pub enum Gesture {
     /// Ctrl + right-click: look up the word here.
     LookUp(Point),
-    /// A button went down while the card is open (to close it when that is outside it).
-    Pressed(Point),
+    /// A click or a scroll while the card is open (to close it when that is outside it).
+    Activity(Point),
 }
 
 /// The mouse events the hook tells apart.
@@ -43,6 +43,7 @@ pub enum Button {
     RightDown,
     RightUp,
     OtherDown,
+    Wheel,
 }
 
 /// The modifier keys held during a right-click.
@@ -82,14 +83,14 @@ pub fn decide(
             *holding_release = false;
             Decision { gesture: None, swallow: true }
         }
-        Button::RightDown | Button::OtherDown if card_open => {
-            Decision { gesture: Some(Gesture::Pressed(at)), swallow: false }
+        Button::RightDown | Button::OtherDown | Button::Wheel if card_open => {
+            Decision { gesture: Some(Gesture::Activity(at)), swallow: false }
         }
         _ => PASS,
     }
 }
 
-/// Set while the word card is on screen, so other clicks are reported to close it.
+/// Set while the word card is on screen, so other clicks and scrolls are reported to close it.
 pub static CARD_OPEN: AtomicBool = AtomicBool::new(false);
 /// Where gestures go. The hook procedure is a plain function, so it reaches it here.
 static GESTURES: Mutex<Option<Sender<Gesture>>> = Mutex::new(None);
@@ -114,6 +115,7 @@ unsafe extern "system" fn on_mouse(code: i32, wparam: WPARAM, lparam: LPARAM) ->
             WM_RBUTTONDOWN => Some(Button::RightDown),
             WM_RBUTTONUP => Some(Button::RightUp),
             WM_LBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN => Some(Button::OtherDown),
+            WM_MOUSEWHEEL | WM_MOUSEHWHEEL => Some(Button::Wheel),
             _ => None,
         };
         if let Some(button) = button {
@@ -242,14 +244,17 @@ mod tests {
     }
 
     #[test]
-    fn clicks_are_reported_only_while_the_card_is_open() {
+    fn clicks_and_scrolls_are_reported_only_while_the_card_is_open() {
         let mut holding = false;
         let none = Modifiers::default();
         assert_eq!(decide(Button::OtherDown, AT, none, false, false, &mut holding), PASS);
+        assert_eq!(decide(Button::Wheel, AT, none, false, false, &mut holding), PASS);
         let open = decide(Button::OtherDown, AT, none, false, true, &mut holding);
-        assert_eq!(open, Decision { gesture: Some(Gesture::Pressed(AT)), swallow: false });
+        assert_eq!(open, Decision { gesture: Some(Gesture::Activity(AT)), swallow: false });
+        let scroll = decide(Button::Wheel, AT, none, false, true, &mut holding);
+        assert_eq!(scroll, Decision { gesture: Some(Gesture::Activity(AT)), swallow: false });
         let right = decide(Button::RightDown, AT, none, false, true, &mut holding);
-        assert_eq!(right.gesture, Some(Gesture::Pressed(AT)));
+        assert_eq!(right.gesture, Some(Gesture::Activity(AT)));
         assert!(!right.swallow, "a plain right-click still reaches the app");
     }
 }

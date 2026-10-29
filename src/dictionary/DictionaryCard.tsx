@@ -58,10 +58,11 @@ function Explanation(props: { card: WordCard }) {
 }
 
 /**
- * The card beside the pointer after Ctrl + right-click on a word: its meanings from the
+ * The card beside the pointer after Ctrl + right-click on a word (or inside a selected
+ * phrase): its meanings from the
  * dictionary built into mouce, and what the AI says it means in its sentence. The window
- * never takes the keyboard, so it closes with its button, a click elsewhere, or "Chat about
- * this".
+ * never takes the keyboard, so it closes with its button, a click or scroll elsewhere, or
+ * "Chat about this".
  */
 export function DictionaryCard() {
   const [card, setCard] = useState<WordCard | null>(null);
@@ -120,6 +121,7 @@ export function DictionaryCard() {
   const fromForm = head !== undefined && head.word.toLowerCase() !== card.word.toLowerCase();
   const hidden = card.entries.reduce((n, e) => n + Math.max(0, e.senses.length - SHOWN_SENSES), 0);
   const thinking = card.explaining === "writing" || card.explaining === "done";
+  const kind = /\s/.test(card.word) ? "phrase" : "word";
 
   return (
     <div className="dict">
@@ -180,8 +182,8 @@ export function DictionaryCard() {
         {card.entries.length === 0 && !thinking && (
           <p className="dict-note">
             {card.explaining === "failed"
-              ? "This word isn't in mouce's dictionary, and the AI couldn't be reached."
-              : "This word isn't in mouce's dictionary."}
+              ? `This ${kind} isn't in mouce's dictionary, and the AI couldn't be reached.`
+              : `This ${kind} isn't in mouce's dictionary.`}
           </p>
         )}
 

@@ -2,6 +2,8 @@
 
 /// Anything longer than this is not a word worth looking up.
 const MAX_WORD_CHARS: usize = 48;
+/// A selection longer than this many words is more than a phrase.
+const MAX_PHRASE_WORDS: usize = 8;
 /// The most of a sentence kept as the text around a word.
 const MAX_CONTEXT_CHARS: usize = 400;
 
@@ -16,8 +18,29 @@ pub fn clean_word(raw: &str) -> Option<String> {
     ok.then(|| first.to_string())
 }
 
+/// The phrase in `raw` (selected text), tidied: spaces collapsed and punctuation trimmed
+/// from its ends. One word comes back as `clean_word` would give it. `None` when it is not
+/// a phrase: no letters, or more than `MAX_PHRASE_WORDS` words.
+pub fn clean_phrase(raw: &str) -> Option<String> {
+    let words: Vec<&str> = raw.split_whitespace().collect();
+    if words.len() <= 1 {
+        return clean_word(raw);
+    }
+    if words.len() > MAX_PHRASE_WORDS {
+        return None;
+    }
+    let edge = |c: char| !c.is_alphanumeric();
+    let phrase = words.join(" ");
+    let phrase = phrase.trim_matches(edge);
+    phrase.chars().any(char::is_alphabetic).then(|| phrase.to_string())
+}
+
+/// The same letters, ignoring case; any space matches any other (a phrase may wrap).
 fn same_letters(a: &[char], b: &[char]) -> bool {
-    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_lowercase().eq(y.to_lowercase()))
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(x, y)| {
+            (x.is_whitespace() && y.is_whitespace()) || x.to_lowercase().eq(y.to_lowercase())
+        })
 }
 
 /// Ends a sentence: a full stop, question or exclamation mark before a space.
@@ -138,6 +161,23 @@ mod tests {
             assert_eq!(clean_word(raw), None, "{raw:?}");
         }
         assert_eq!(clean_word("3D").as_deref(), Some("3D"));
+    }
+
+    #[test]
+    fn a_selected_phrase_is_tidied() {
+        assert_eq!(clean_phrase(" by and\n large, ").as_deref(), Some("by and large"));
+        assert_eq!(clean_phrase("\u{201c}give up\u{201d}").as_deref(), Some("give up"));
+        assert_eq!(clean_phrase("serendipity.").as_deref(), Some("serendipity"), "one word");
+        assert_eq!(clean_phrase("1 2 3"), None, "no letters");
+        assert_eq!(clean_phrase("   "), None);
+        let long = "one two three four five six seven eight nine";
+        assert_eq!(clean_phrase(long), None, "a whole sentence is not a phrase");
+    }
+
+    #[test]
+    fn the_sentence_holding_a_phrase_is_found_even_where_it_wraps() {
+        let text = "It rained. By and\nlarge, the trip went well.";
+        assert_eq!(sentence_around(text, 11, "by and large"), "By and large, the trip went well.");
     }
 
     #[test]

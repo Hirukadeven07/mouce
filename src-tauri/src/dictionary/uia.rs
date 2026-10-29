@@ -1,6 +1,7 @@
-//! Reads the word under the pointer through Windows UI Automation, the interface screen
-//! readers use. It is used read-only: mouce asks for text and where it is on screen, and
-//! never selects, scrolls, types into or presses anything. Password boxes are left alone.
+//! Reads the word under the pointer (or the phrase selected there) through Windows UI
+//! Automation, the interface screen readers use. It is used read-only: mouce asks for text,
+//! the current selection and where they are on screen, and never selects, scrolls, types
+//! into or presses anything. Password boxes are left alone.
 
 use super::hook::Point;
 use super::text;
@@ -27,14 +28,14 @@ const MAX_PARENTS: usize = 8;
 const SLACK: f64 = 2.0;
 /// The most text read from the paragraph around a word.
 const MAX_PARAGRAPH: i32 = 4000;
+/// The most selected text read; a phrase is far shorter.
+const MAX_SELECTION: i32 = 200;
 
 /// What was found under the pointer.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Reading {
-    Word {
-        word: String,
-        context: String,
-    },
+    /// A word, or a phrase the user selected, and the sentence it is in.
+    Word { word: String, context: String },
     /// A password box: mouce does not read it, by any means.
     Secret,
     /// No text the app would share; reading the pixels may still find a word.
@@ -95,6 +96,9 @@ impl Reader {
 }
 
 unsafe fn word_in(pattern: &IUIAutomationTextPattern, pt: POINT) -> windows::core::Result<Reading> {
+    if let Some(reading) = unsafe { selection_at(pattern, pt) } {
+        return Ok(reading);
+    }
     let range = unsafe { pattern.RangeFromPoint(pt)? };
     let word = unsafe { range.Clone()? };
     unsafe { word.ExpandToEnclosingUnit(TextUnit_Word)? };
@@ -107,6 +111,25 @@ unsafe fn word_in(pattern: &IUIAutomationTextPattern, pt: POINT) -> windows::cor
     let Some(clean) = text::clean_word(&raw) else { return Ok(Reading::Nothing) };
     let context = unsafe { paragraph_sentence(&range, &word, &clean) }.unwrap_or_default();
     Ok(Reading::Word { word: clean, context })
+}
+
+/// The selected text under the pointer, when the user selected a phrase and clicked in it.
+/// The selection is only read, never changed.
+unsafe fn selection_at(pattern: &IUIAutomationTextPattern, pt: POINT) -> Option<Reading> {
+    let selected = unsafe { pattern.GetSelection() }.ok()?;
+    for i in 0..unsafe { selected.Length() }.unwrap_or(0) {
+        let Ok(range) = (unsafe { selected.GetElement(i) }) else { continue };
+        // An empty selection (just the caret) has no boxes; it is not what was pointed at.
+        let boxes = unsafe { boxes_of(&range) };
+        if boxes.is_empty() || !text::boxes_hold(&boxes, pt.x as f64, pt.y as f64, SLACK) {
+            continue;
+        }
+        let raw = unsafe { range.GetText(MAX_SELECTION) }.ok()?.to_string();
+        let phrase = text::clean_phrase(&raw)?;
+        let context = unsafe { paragraph_sentence(&range, &range, &phrase) }.unwrap_or_default();
+        return Some(Reading::Word { word: phrase, context });
+    }
+    None
 }
 
 /// The sentence around `word`, from the paragraph that holds it.

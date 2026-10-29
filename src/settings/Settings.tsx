@@ -144,7 +144,8 @@ export function Settings() {
         </div>
       </div>
       <p className="group-footer" id={ids.dictionaryNote}>
-        Hold Ctrl and right-click a word in any app to see what it means. Meanings come from a
+        Hold Ctrl and right-click a word in any app to see what it means, or select a phrase and
+        Ctrl + right-click inside it. Meanings come from a
         dictionary built into mouce, which works offline. With an AI set up, the word and its
         sentence also go to it, to explain the word as it is used there. Password boxes are never
         read.

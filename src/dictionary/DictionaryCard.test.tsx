@@ -101,6 +101,16 @@ describe("DictionaryCard", () => {
     ).toBeInTheDocument();
   });
 
+  it("a selected phrase is explained by the AI, and named as a phrase", async () => {
+    const phrase: WordCard = { ...ran, word: "by and large", entries: [], explaining: "failed" };
+    vi.mocked(ipc.dictionaryCurrent).mockResolvedValue(phrase);
+    render(<DictionaryCard />);
+    expect(await screen.findByRole("heading", { level: 1, name: "by and large" })).toBeInTheDocument();
+    expect(
+      screen.getByText("This phrase isn't in mouce's dictionary, and the AI couldn't be reached."),
+    ).toBeInTheDocument();
+  });
+
   it("closes, or hands the word to the chat", async () => {
     const user = userEvent.setup();
     render(<DictionaryCard />);
