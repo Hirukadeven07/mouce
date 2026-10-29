@@ -52,7 +52,13 @@ function ShortcutField(props: {
 /** The Settings tab of the home window. */
 export function Settings() {
   const { settings, error, save } = useSettings();
-  const ids = { history: useId(), startup: useId(), keysNote: useId() };
+  const ids = {
+    history: useId(),
+    startup: useId(),
+    keysNote: useId(),
+    dictionary: useId(),
+    dictionaryNote: useId(),
+  };
   const [autostart, setAutostartState] = useState<boolean | null>(null);
   const [autostartError, setAutostartError] = useState<string | null>(null);
   const [autostartBusy, setAutostartBusy] = useState(false);
@@ -119,6 +125,29 @@ export function Settings() {
       </div>
       <p className="group-footer" id={ids.keysNote}>
         For example Ctrl+Alt+M or Ctrl+Alt+O. Leave a shortcut empty to turn it off.
+      </p>
+
+      <h2 className="group-title">Dictionary</h2>
+      <div className="group">
+        <div className="form-row">
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.dictionary}>
+              Look up a word with Ctrl + right-click
+            </label>
+            <Switch
+              id={ids.dictionary}
+              checked={settings.dictionary_enabled}
+              aria-describedby={ids.dictionaryNote}
+              onChange={(e) => void save({ dictionary_enabled: e.target.checked })}
+            />
+          </div>
+        </div>
+      </div>
+      <p className="group-footer" id={ids.dictionaryNote}>
+        Hold Ctrl and right-click a word in any app to see what it means. Meanings come from a
+        dictionary built into mouce, which works offline. With an AI set up, the word and its
+        sentence also go to it, to explain the word as it is used there. Password boxes are never
+        read.
       </p>
 
       <h2 className="group-title">Privacy</h2>

@@ -8,7 +8,7 @@ use crate::ai::{self, ChatMessage, ChatRequest, ImageInput, Role};
 use crate::chat::{self, Conversation, Snip, Turn};
 use crate::ollama_setup::{self, OllamaStatus, PullProgress};
 use crate::settings::{self, ProviderId, Settings};
-use crate::{circle, hotkey, mouce, screen, AppState};
+use crate::{circle, dictionary, hotkey, mouce, screen, AppState};
 use serde::Serialize;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -147,6 +147,7 @@ pub fn update_settings(
     hotkey::check_distinct(&settings.chat_hotkey, &settings.circle_hotkey)?;
     let current = get_settings_impl(&state);
     let glass_before = current.liquid_glass;
+    let dictionary_before = current.dictionary_enabled;
     let moves: Vec<(String, String)> = [
         (current.chat_hotkey, settings.chat_hotkey.clone()),
         (current.circle_hotkey, settings.circle_hotkey.clone()),
@@ -167,6 +168,9 @@ pub fn update_settings(
     }
     if saved.liquid_glass != glass_before {
         mouce::set_glass(&app, saved.liquid_glass);
+    }
+    if saved.dictionary_enabled != dictionary_before {
+        dictionary::set_enabled(&app, saved.dictionary_enabled);
     }
     Ok(saved)
 }
@@ -306,24 +310,29 @@ fn persist_chat(state: &AppState) -> Result<(), String> {
     chat::save_history(&state.store, chat.turns()).map_err(|e| e.to_string())
 }
 
-/// Asks `provider` about the conversation so far, streaming the answer to `on_chunk`.
+/// Builds a request for the model the user picked.
+pub type RequestFor<'a> = &'a (dyn Fn(String) -> ChatRequest + Sync);
+
+/// Asks `provider` the request `request` makes for its model, streaming the answer to
+/// `on_chunk`.
 async fn ask(
     state: &AppState,
     settings: &Settings,
     provider: ProviderId,
+    request: RequestFor<'_>,
     on_chunk: &mut (dyn for<'a> FnMut(&'a str) + Send),
 ) -> Result<String, String> {
-    let model = model_for(settings, provider)?;
-    let request = lock_chat(state).request(model);
+    let request = request(model_for(settings, provider)?);
     let provider = build_provider(state, settings, provider)?;
     provider.chat_stream(&request, on_chunk).await.map_err(|e| e.to_string())
 }
 
 /// Asks the chosen AI. If an online AI fails before writing anything and fallback is on,
 /// asks the local one instead. Returns the answer and whether the local AI gave it.
-async fn ask_with_fallback(
+pub async fn ask_with_fallback(
     state: &AppState,
     settings: &Settings,
+    request: RequestFor<'_>,
     on_chunk: &mut (dyn for<'a> FnMut(&'a str) + Send),
 ) -> Result<(String, bool), String> {
     let mut wrote = false;
@@ -332,7 +341,7 @@ async fn ask_with_fallback(
             wrote = true;
             on_chunk(d);
         };
-        ask(state, settings, settings.provider, &mut track).await
+        ask(state, settings, settings.provider, request, &mut track).await
     };
     match first {
         Ok(text) => Ok((text, false)),
@@ -343,7 +352,7 @@ async fn ask_with_fallback(
                 "{:?} could not answer, asking the local AI instead: {e}",
                 settings.provider
             );
-            match ask(state, settings, ProviderId::Ollama, on_chunk).await {
+            match ask(state, settings, ProviderId::Ollama, request, on_chunk).await {
                 Ok(text) => Ok((text, true)),
                 Err(local) => Err(format!("{e} (the local AI could not answer either: {local})")),
             }
@@ -429,6 +438,7 @@ where
         (screen, _) => lock_chat(state).push_user(text, screen),
     }
 
+    let chat_request = |model: String| lock_chat(state).request(model);
     let mut written = String::new();
     let outcome = {
         let mut on_chunk = |d: &str| {
@@ -436,7 +446,7 @@ where
             on_delta(d);
         };
         tokio::select! {
-            result = ask_with_fallback(state, &settings, &mut on_chunk) => Some(result),
+            result = ask_with_fallback(state, &settings, &chat_request, &mut on_chunk) => Some(result),
             _ = stop.notified() => None,
         }
     };
@@ -581,6 +591,12 @@ pub fn chat_attachment(state: State<'_, AppState>) -> Option<String> {
     circle::attachment_impl(&state)
 }
 
+/// The question "Chat about this" left for a chat that was not open yet, if there is one.
+#[tauri::command(async)]
+pub fn chat_take_draft(state: State<'_, AppState>) -> Option<String> {
+    state.chat_draft.lock().unwrap_or_else(|e| e.into_inner()).take()
+}
+
 #[tauri::command(async)]
 pub fn chat_discard_attachment(app: AppHandle, state: State<'_, AppState>) {
     circle::discard_impl(&state);
@@ -626,6 +642,31 @@ pub fn circle_finish(
 #[tauri::command]
 pub fn circle_cancel(app: AppHandle) {
     circle::close_layer(&app);
+}
+
+// ---- dictionary ----
+
+/// The word card on screen now, for its page when it loads.
+#[tauri::command(async)]
+pub fn dictionary_current(state: State<'_, AppState>) -> Option<dictionary::Card> {
+    dictionary::current_impl(&state)
+}
+
+/// The card's page has laid out card `id` at `height` logical pixels: show it there.
+#[tauri::command(async)]
+pub fn dictionary_fit(app: AppHandle, id: u64, height: f64) -> Result<(), String> {
+    dictionary::fit_card(&app, id, height)
+}
+
+#[tauri::command(async)]
+pub fn dictionary_close(app: AppHandle, id: u64) {
+    dictionary::close_card(&app, id);
+}
+
+/// "Chat about this": opens the chat with a question about the word on card `id`.
+#[tauri::command(async)]
+pub fn dictionary_chat(app: AppHandle, id: u64) -> Result<(), String> {
+    dictionary::chat_about(&app, id)
 }
 
 // ---- Ollama ----

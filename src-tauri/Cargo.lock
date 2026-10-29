@@ -2360,6 +2360,7 @@ dependencies = [
  "image",
  "keyring",
  "log",
+ "miniz_oxide 0.8.9",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",

@@ -8,9 +8,11 @@ import {
   chatHistory,
   chatSend,
   chatStop,
+  chatTakeDraft,
   circleStart,
   getSettings,
   onChatAttachment,
+  onChatDraft,
   onSettingsChanged,
   openHome,
   openHomeChat,
@@ -128,9 +130,18 @@ export function ChatView(props: {
         setAttachment(preview);
         inputRef.current?.focus();
       }),
+      // "Chat about this" on the word card: a question ready to send or change.
+      onChatDraft((text) => {
+        if (!mounted.current) return;
+        setDraft(text);
+        inputRef.current?.focus();
+      }),
     ].map((p) => p.catch(() => null));
     chatAttachment()
       .then((preview) => mounted.current && setAttachment(preview))
+      .catch(() => {});
+    chatTakeDraft()
+      .then((text) => mounted.current && text && setDraft(text))
       .catch(() => {});
     getSettings()
       .then((s) => mounted.current && setSettings((cur) => cur ?? s))

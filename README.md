@@ -45,6 +45,11 @@ your own API key.
 - **Circle to look up.** Press **Ctrl+Alt+O** in any app (or use the chat's Circle button)
   and the screen freezes. Draw around anything, and only that part goes to the chat for you
   to ask about. Esc or a right-click cancels.
+- **Dictionary.** Hold **Ctrl** and right-click a word in any app. A small card beside it
+  shows how to say it, its meanings and examples, from a dictionary built into mouce that
+  works offline. With an AI set up, the card also says what the word means in the sentence
+  you're reading. "Chat about this" takes the word to the chat. A plain right-click is never
+  touched, and you can turn the dictionary off in Settings.
 - **Shows what it's doing.** It sways gently when idle, moves faster while thinking, dims and
   pulses while looking, and glows when something needs your attention.
 - **Your choice of AI.** Run a local model on your own machine, or bring a key for OpenAI,
@@ -64,7 +69,8 @@ computer.
 | Guarantee | How it's enforced |
 | --- | --- |
 | No file, process, clipboard or input access | The app contains no file-write, process-launch, clipboard-write or input-synthesis code. An automated scan ([`src-tauri/tests/safety_scan.rs`](src-tauri/tests/safety_scan.rs)) fails the build if such APIs, extra capabilities or extra permissions appear. |
-| Looks only when you ask | mouce takes a picture of your screen only when you press "Look at my screen" or start Circle to look up. Pictures stay in memory and are never saved; only the part you circle (or the screen you chose to share) goes to the AI you picked, and saved chat history keeps text only. |
+| Watches one mouse gesture, and nothing else | While the dictionary is on, a mouse hook waits for Ctrl + right-click. It only notes which button went down and where; it never moves the pointer, clicks or reads the keyboard, and it holds back only that one Ctrl + right-click so the app's own menu stays shut. The scan allows no other kind of hook, and turning the dictionary off removes it. |
+| Looks only when you ask | mouce takes a picture of your screen only when you press "Look at my screen" or start Circle to look up. Ctrl + right-click reads just the word under the pointer and its sentence, through Windows' accessibility interface (read-only), or from a small picture around the pointer when an app doesn't share its text. Password boxes are never read. Pictures stay in memory and are never saved; only the part you circle (or the screen you chose to share) goes to the AI you picked, the dictionary sends it only the word and its sentence, and saved chat history keeps text only. |
 | Writes only to its own folder | A single storage module writes to disk, and only inside the app's data folder. The log goes to the app's own log folder; the scan rejects any other log location. |
 | API keys stay secret | Keys are stored in Windows Credential Manager. They are written from Settings and read only by the Rust backend to reach the provider you picked; they never reach the web view. |
 | No surprise browsing | The only address the app ever opens in your browser is the Ollama download page. |
@@ -138,7 +144,14 @@ at most three files of about 1 MB each, replacing the oldest.
       storage, capability lockdown, safety scan, first run
 - [x] **Chat:** a panel next to mouce with streaming answers and "Look at my screen"
 - [x] **Circle to look up:** draw around anything on screen and ask about it
-- [ ] **Dictionary:** Ctrl + right-click a word for its meaning, with an offline fallback
+- [x] **Dictionary:** Ctrl + right-click a word for its meaning, with an offline fallback
 - [ ] **Calendar and reminders:** add events in plain language, confirm before saving, and get
       gentle reminders
 - [ ] **Packaging:** a signed Windows installer
+
+## Credits
+
+The offline dictionary is built from [Open English WordNet](https://github.com/globalwordnet/english-wordnet)
+(2025 edition), © the Open English WordNet team, licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). mouce keeps a trimmed copy; see
+[`src-tauri/dictionary`](src-tauri/dictionary) for what was changed and how it is built.

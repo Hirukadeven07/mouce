@@ -20,6 +20,7 @@ const PATHS = {
   chat: "M5 4.5h10A1.5 1.5 0 0 1 16.5 6v6a1.5 1.5 0 0 1-1.5 1.5H9.2l-3.7 2.8v-2.8H5A1.5 1.5 0 0 1 3.5 12V6A1.5 1.5 0 0 1 5 4.5Z",
   expand: "M11.5 3.5h5v5M16.5 3.5 11.2 8.8M8.5 16.5h-5v-5M3.5 16.5l5.3-5.3",
   shrink: "M16.5 3.5 11.5 8.5M11.5 4.5v4h4M3.5 16.5l5-5M8.5 15.5v-4h-4",
+  speaker: "M3.5 8h2.8L10 4.8v10.4L6.3 12H3.5V8ZM13 7.4a3.6 3.6 0 0 1 0 5.2M15.2 5.2a6.8 6.8 0 0 1 0 9.6",
 } as const;
 
 export type IconName = keyof typeof PATHS | "stop";
