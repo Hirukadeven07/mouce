@@ -38,6 +38,13 @@ async function root(): Promise<React.ReactElement> {
       const { CircleLayer } = await import("./circle/CircleLayer");
       return <CircleLayer />;
     }
+    case "dictionary": {
+      await pageWindow();
+      document.documentElement.classList.add("dictionary-window-page");
+      await import("./dictionary/dictionary.css");
+      const { DictionaryCard } = await import("./dictionary/DictionaryCard");
+      return <DictionaryCard />;
+    }
     case "firstrun": {
       await pageWindow();
       await import("./firstrun/firstrun.css");

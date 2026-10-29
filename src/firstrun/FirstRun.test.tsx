@@ -21,6 +21,7 @@ const baseSettings: Settings = {
   fallback_to_local: true,
   first_run_done: false,
   liquid_glass: true,
+  dictionary_enabled: true,
 };
 
 let progressCb: ((p: PullProgress) => void) | undefined;

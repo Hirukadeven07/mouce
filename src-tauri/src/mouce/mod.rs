@@ -66,7 +66,7 @@ fn initial_position(app: &AppHandle, settings: &Settings) -> tauri::Result<(i32,
 }
 
 /// Makes the window non-activating (clicks never steal focus) and hides it from Alt+Tab.
-fn apply_no_focus_styles(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+pub fn apply_no_focus_styles(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     let hwnd = window.hwnd()?;
     let needed = (WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0) as isize;
     // SAFETY: `hwnd` is the live handle of a window owned by this process.
@@ -78,7 +78,7 @@ fn apply_no_focus_styles(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     // Never-stealing-focus is a core property of the mouce: fail loudly if it did not stick.
     if applied & needed != needed {
         return Err(tauri::Error::Io(std::io::Error::other(
-            "could not apply the no-focus window style to the mouce",
+            "could not apply the no-focus window style",
         )));
     }
     Ok(())

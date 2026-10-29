@@ -1,4 +1,5 @@
-// Mirrors the Rust types in src-tauri/src (settings.rs, ollama_setup.rs, chat.rs, commands.rs).
+// Mirrors the Rust types in src-tauri/src (settings.rs, ollama_setup.rs, chat.rs, commands.rs,
+// dictionary/).
 
 export type ProviderId = "ollama" | "openai" | "groq" | "gemini" | "anthropic";
 
@@ -31,6 +32,8 @@ export interface Settings {
   first_run_done: boolean;
   /** Floating controls are drawn as Liquid Glass; off makes every surface solid. */
   liquid_glass: boolean;
+  /** Ctrl + right-click a word in any app to look it up. */
+  dictionary_enabled: boolean;
 }
 
 export type MouceState = "idle" | "thinking" | "looking" | "reminder";
@@ -71,4 +74,35 @@ export interface PullProgress {
   status: string;
   completed: number | null;
   total: number | null;
+}
+
+/** One meaning of a word, with an example of it in use when the dictionary has one. */
+export interface Sense {
+  meaning: string;
+  example: string | null;
+}
+
+/** A word as one part of speech, from the dictionary built into mouce. */
+export interface DictionaryEntry {
+  word: string;
+  part_of_speech: "noun" | "verb" | "adjective" | "adverb" | "";
+  /** In the International Phonetic Alphabet. */
+  pronunciation: string | null;
+  senses: Sense[];
+}
+
+/** What the word card shows (`dictionary::Card`). */
+export interface WordCard {
+  /** New for each look-up. */
+  id: number;
+  /** The word as it was on screen; empty when `missing` says why. */
+  word: string;
+  /** The sentence it was in; may be empty. */
+  context: string;
+  /** "word": there was no word there; "secret": a password box, which mouce leaves alone. */
+  missing: "word" | "secret" | null;
+  entries: DictionaryEntry[];
+  /** Whether the AI is saying what the word means in its sentence. */
+  explaining: "off" | "writing" | "done" | "failed";
+  explanation: string;
 }

@@ -2,6 +2,7 @@ pub mod ai;
 pub mod chat;
 pub mod circle;
 pub mod commands;
+pub mod dictionary;
 pub mod hotkey;
 pub mod mouce;
 pub mod ollama_setup;
@@ -39,6 +40,10 @@ pub struct AppState {
     pub circle_frame: Mutex<Option<screen::Frame>>,
     /// The circled part waiting to be asked about in the chat.
     pub circled: Mutex<Option<chat::Snip>>,
+    /// The word card, and the mouse hook while the dictionary is on.
+    pub dictionary: dictionary::DictionaryState,
+    /// A question waiting for the chat to open ("Chat about this" on the word card).
+    pub chat_draft: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -57,6 +62,8 @@ impl AppState {
             circle_active: AtomicBool::new(false),
             circle_frame: Mutex::new(None),
             circled: Mutex::new(None),
+            dictionary: dictionary::DictionaryState::default(),
+            chat_draft: Mutex::new(None),
         }
     }
 }
@@ -120,6 +127,10 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         if let Err(e) = hotkey::register(app.handle(), keys) {
             log::warn!("could not set up the {what} shortcut: {e}");
         }
+    }
+    // Without it the rest of mouce still works.
+    if let Err(e) = dictionary::start(app.handle(), settings.dictionary_enabled) {
+        log::warn!("could not start the dictionary: {e}");
     }
     if !settings.first_run_done {
         mouce::open_firstrun(app.handle());
@@ -225,6 +236,11 @@ pub fn run() -> Result<(), String> {
             commands::circle_ready,
             commands::circle_finish,
             commands::circle_cancel,
+            commands::chat_take_draft,
+            commands::dictionary_current,
+            commands::dictionary_fit,
+            commands::dictionary_close,
+            commands::dictionary_chat,
         ])
         .setup(|app| {
             // A setup error would make Tauri panic, which under the windows subsystem is a

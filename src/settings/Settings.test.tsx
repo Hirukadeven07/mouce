@@ -21,6 +21,7 @@ const baseSettings: Settings = {
   fallback_to_local: true,
   first_run_done: true,
   liquid_glass: true,
+  dictionary_enabled: true,
 };
 
 let progressCb: ((p: PullProgress) => void) | undefined;
@@ -189,6 +190,17 @@ describe("Settings", () => {
 
     await act(async () => finish({ ...baseSettings, history_enabled: true }));
     expect(history()).toBeChecked();
+  });
+
+  it("turns the Ctrl + right-click dictionary off and on", async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+    const dictionary = screen.getByRole("switch", { name: "Look up a word with Ctrl + right-click" });
+    expect(dictionary).toBeChecked();
+    expect(dictionary).toHaveAccessibleDescription(/Password boxes are never read/);
+    await user.click(dictionary);
+    expect(ipc.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ dictionary_enabled: false }));
+    expect(dictionary).not.toBeChecked();
   });
 
   it("saves a new chat shortcut", async () => {

@@ -20,6 +20,7 @@ const baseSettings: Settings = {
   fallback_to_local: true,
   first_run_done: true,
   liquid_glass: true,
+  dictionary_enabled: true,
 };
 
 describe("Mouce", () => {

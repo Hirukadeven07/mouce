@@ -22,6 +22,7 @@ const baseSettings: Settings = {
   fallback_to_local: true,
   first_run_done: true,
   liquid_glass: true,
+  dictionary_enabled: true,
 };
 
 let tabCb: ((tab: HomeTabId) => void) | undefined;
@@ -53,6 +54,8 @@ describe("HomeWindow", () => {
     ]);
     vi.mocked(ipc.chatAttachment).mockResolvedValue(null);
     vi.mocked(ipc.onChatAttachment).mockResolvedValue(() => {});
+    vi.mocked(ipc.chatTakeDraft).mockResolvedValue(null);
+    vi.mocked(ipc.onChatDraft).mockResolvedValue(() => {});
     vi.mocked(ipc.closeChatPanel).mockResolvedValue();
   });
 

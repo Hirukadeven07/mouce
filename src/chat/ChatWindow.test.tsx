@@ -21,6 +21,7 @@ const baseSettings: Settings = {
   fallback_to_local: true,
   first_run_done: true,
   liquid_glass: true,
+  dictionary_enabled: true,
 };
 
 const done = (text: string, extra: Partial<ChatReply> = {}): ChatReply => ({
@@ -36,6 +37,8 @@ let saved: ChatTurn[];
 // A stand-in for the circled area waiting in Rust, and the event that announces it.
 let attachment: string | null;
 let attachmentCb: ((preview: string | null) => void) | undefined;
+// The event "Chat about this" on the word card sends to an open chat.
+let draftCb: ((text: string) => void) | undefined;
 
 function answerWith(chunks: string[], extra: Partial<ChatReply> = {}) {
   vi.mocked(ipc.chatSend).mockImplementation(async (text, look, onDelta) => {
@@ -70,6 +73,11 @@ describe("ChatWindow", () => {
       return () => {};
     });
     vi.mocked(ipc.circleStart).mockResolvedValue();
+    vi.mocked(ipc.chatTakeDraft).mockResolvedValue(null);
+    vi.mocked(ipc.onChatDraft).mockImplementation(async (cb) => {
+      draftCb = cb;
+      return () => {};
+    });
     vi.mocked(ipc.chatClear).mockImplementation(async () => {
       saved = [];
     });
@@ -85,6 +93,18 @@ describe("ChatWindow", () => {
     expect(screen.getByText("hi")).toBeInTheDocument();
     expect(screen.getByText("Shared screen")).toBeInTheDocument();
     expect(await screen.findByText("Local · gemma3:4b")).toBeInTheDocument();
+  });
+
+  it("a question from the word card waits in the message box, ready to send", async () => {
+    vi.mocked(ipc.chatTakeDraft).mockResolvedValue("What does “bank” mean?");
+    render(<ChatWindow />);
+    const box = screen.getByRole("textbox", { name: "Message" });
+    await waitFor(() => expect(box).toHaveValue("What does “bank” mean?"));
+    expect(ipc.chatSend).not.toHaveBeenCalled();
+
+    act(() => draftCb!("What does “goose” mean?"));
+    expect(box).toHaveValue("What does “goose” mean?");
+    expect(box).toHaveFocus();
   });
 
   it("the logo in the header opens the home window", async () => {
@@ -264,6 +284,11 @@ describe("ChatWindow with Circle to look up", () => {
       return () => {};
     });
     vi.mocked(ipc.circleStart).mockResolvedValue();
+    vi.mocked(ipc.chatTakeDraft).mockResolvedValue(null);
+    vi.mocked(ipc.onChatDraft).mockImplementation(async (cb) => {
+      draftCb = cb;
+      return () => {};
+    });
   });
 
   it("the Circle button starts circling", async () => {

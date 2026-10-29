@@ -50,6 +50,8 @@ pub struct Settings {
     pub first_run_done: bool,
     /// Draws the floating controls as Liquid Glass over a Mica window; off is solid.
     pub liquid_glass: bool,
+    /// Ctrl + right-click a word in any app to look it up. Off removes the mouse hook.
+    pub dictionary_enabled: bool,
 }
 
 impl Default for Settings {
@@ -67,6 +69,7 @@ impl Default for Settings {
             fallback_to_local: true,
             first_run_done: false,
             liquid_glass: true,
+            dictionary_enabled: true,
         }
     }
 }
@@ -130,6 +133,7 @@ mod tests {
         assert!(d.fallback_to_local);
         assert!(!d.first_run_done);
         assert!(d.liquid_glass);
+        assert!(d.dictionary_enabled);
         assert_eq!(MouceSize::Small.px(), 28);
         assert_eq!(MouceSize::Medium.px(), 36);
         assert_eq!(MouceSize::Large.px(), 48);
@@ -151,6 +155,7 @@ mod tests {
         let loaded = load(&s);
         assert_eq!(loaded.provider, ProviderId::Groq);
         assert!(loaded.liquid_glass);
+        assert!(loaded.dictionary_enabled, "the dictionary is on for settings saved before it");
     }
 
     #[test]

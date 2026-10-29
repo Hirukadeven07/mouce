@@ -13,6 +13,7 @@ import type {
   Selection,
   Settings,
   MouceState,
+  WordCard,
 } from "./types";
 
 export type { UnlistenFn };
@@ -148,6 +149,36 @@ export function chatAttachment(): Promise<string | null> {
 
 export function chatDiscardAttachment(): Promise<void> {
   return invoke<void>("chat_discard_attachment");
+}
+
+// A question left by "Chat about this" on the word card while the chat was closed.
+export function chatTakeDraft(): Promise<string | null> {
+  return invoke<string | null>("chat_take_draft");
+}
+
+export function onChatDraft(cb: (text: string) => void): Promise<UnlistenFn> {
+  return listen<string>("chat-draft", (e) => cb(e.payload));
+}
+
+export function dictionaryCurrent(): Promise<WordCard | null> {
+  return invoke<WordCard | null>("dictionary_current");
+}
+
+export function onDictionaryCard(cb: (card: WordCard) => void): Promise<UnlistenFn> {
+  return listen<WordCard>("dictionary-card", (e) => cb(e.payload));
+}
+
+// The card has laid out card `id` at `height` CSS pixels; Rust sizes and shows its window.
+export function dictionaryFit(id: number, height: number): Promise<void> {
+  return invoke<void>("dictionary_fit", { id, height });
+}
+
+export function dictionaryClose(id: number): Promise<void> {
+  return invoke<void>("dictionary_close", { id });
+}
+
+export function dictionaryChat(id: number): Promise<void> {
+  return invoke<void>("dictionary_chat", { id });
 }
 
 export function onChatAttachment(cb: (preview: string | null) => void): Promise<UnlistenFn> {

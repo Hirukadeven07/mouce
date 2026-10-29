@@ -42,11 +42,33 @@ const FORBIDDEN_EVERYWHERE: &[&str] = &[
     "PostMessage",
     "SetWindowText",
     "DoDefaultAction",
-    // UI Automation: text may be read, but nothing may be written or invoked.
+    // UI Automation: text may be read, but nothing may be written or invoked, and the
+    // selection, scroll position and focus of other apps stay as they are.
     "SetValue(",
     ".Invoke(",
     "InvokePattern",
     "ValuePattern",
+    ".Select(",
+    "AddToSelection",
+    "RemoveFromSelection",
+    "ScrollIntoView",
+    "SetFocus(",
+    // Input: the dictionary's mouse hook may only watch (see `hooks_only_watch_the_mouse`).
+    // Nothing may read the keyboard as it is typed, move or trap the pointer, or block input.
+    "WH_KEYBOARD",
+    "GetKeyboardState",
+    "GetKeyState(",
+    "RegisterRawInputDevices",
+    "SetCursorPos",
+    "ClipCursor",
+    "BlockInput",
+    // Dragging can hand data to another program.
+    "DoDragDrop",
+    // WinRT file access (the text recognition needs no files).
+    "Windows::Storage",
+    "StorageFile",
+    "StorageFolder",
+    "FileRandomAccessStream",
     // Any `fs::` path (`fs::write`, `use std::fs`, `tokio::fs`, ...) outside the store.
     "fs::",
     // The log may only be written to the app's own log folder (`TargetKind::LogDir`).
@@ -303,7 +325,8 @@ fn capabilities_grant_only_allowlist() {
     assert!(!files.is_empty(), "no capability files found");
 
     let mut granted = std::collections::BTreeSet::new();
-    let expected_windows = serde_json::json!(["mouce", "home", "firstrun", "chat", "circle"]);
+    let expected_windows =
+        serde_json::json!(["mouce", "home", "firstrun", "chat", "circle", "dictionary"]);
 
     for path in &files {
         let name = path.display();
@@ -324,7 +347,7 @@ fn capabilities_grant_only_allowlist() {
         assert_eq!(
             value.get("windows"),
             Some(&expected_windows),
-            "{name}: capability windows must be exactly mouce, home, firstrun, chat, circle"
+            "{name}: capability windows must be exactly mouce, home, firstrun, chat, circle, dictionary"
         );
         let perms = value
             .get("permissions")
@@ -372,8 +395,33 @@ fn tauri_conf_has_no_inline_capabilities() {
 /// `Win32_Graphics_Gdi` is here for "Look at my screen": `screen.rs` copies screen pixels
 /// into a memory bitmap. GDI draws and reads pixels; it cannot touch files, input or the
 /// other programs' windows.
-const WINDOWS_FEATURES: &[&str] =
-    &["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"];
+///
+/// The dictionary (`src/dictionary/`) adds the rest:
+/// - `Win32_UI_Input_KeyboardAndMouse`: `GetAsyncKeyState`, to see whether Ctrl is held
+///   during a right-click. The same area can make input, which the patterns above forbid
+///   (`SendInput`, `keybd_event`, `mouse_event`, `BlockInput`, `SetCursorPos`), and
+///   `hooks_only_watch_the_mouse` limits which keys may be asked about.
+/// - `Win32_UI_Accessibility`, with `Win32_System_Com` to create it and `Win32_System_Ole`
+///   for the arrays it returns: UI Automation, read-only, for the word under the pointer.
+///   Invoking, setting values, selecting and scrolling are forbidden above; the drag and
+///   copy-paste parts of OLE are forbidden too.
+/// - `Foundation`, `Globalization`, `Graphics_Imaging`, `Media_Ocr` and `Win32_System_WinRT`:
+///   the text recognition built into Windows, reading a picture held in memory. None of them
+///   opens files (the WinRT file APIs are forbidden above, and `Storage` is not enabled).
+const WINDOWS_FEATURES: &[&str] = &[
+    "Foundation",
+    "Globalization",
+    "Graphics_Imaging",
+    "Media_Ocr",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_WinRT",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+];
 
 /// The `features` of the single `windows = { ... }` dependency in a Cargo.toml.
 fn windows_features(cargo: &str) -> Result<Vec<String>, String> {
@@ -473,4 +521,96 @@ fn tauri_conf_security_is_locked_down() {
         ),
         "the content security policy must be exactly the reviewed one"
     );
+}
+
+/// The keys whose state may be asked about: the modifiers held during a right-click.
+const MODIFIER_KEYS: &[&str] = &["VK_CONTROL", "VK_SHIFT", "VK_MENU"];
+
+/// Problems with how `text` (the file `rel`) uses Windows hooks and key state. Only the
+/// dictionary's hook file may install a hook, only a low-level mouse hook, and only it may
+/// ask whether a key is down, for the modifier keys alone.
+fn hook_problems(rel: &str, text: &str) -> Vec<String> {
+    const HOOK_FILE: &str = "dictionary/hook.rs";
+    let mut problems = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let at = format!("{rel}:{}", i + 1);
+        for word in identifiers(line) {
+            if word.starts_with("WH_") && word != "WH_MOUSE_LL" {
+                problems
+                    .push(format!("{at}: only the low-level mouse hook is allowed, not {word}"));
+            }
+        }
+        if rel != HOOK_FILE {
+            for api in ["SetWindowsHookEx", "GetAsyncKeyState", "WH_MOUSE_LL"] {
+                if line.contains(api) {
+                    problems.push(format!("{at}: {api} is only allowed in {HOOK_FILE}"));
+                }
+            }
+        }
+        if let Some(call) = line.find("GetAsyncKeyState(") {
+            // Either a modifier key, or the `key` of `is_down`, whose callers are checked below.
+            let arg = line[call + "GetAsyncKeyState(".len()..].trim_start();
+            if !(arg.starts_with("key.0") || MODIFIER_KEYS.iter().any(|k| arg.starts_with(k))) {
+                problems
+                    .push(format!("{at}: GetAsyncKeyState may only ask about {MODIFIER_KEYS:?}"));
+            }
+        }
+        if line.contains("is_down(") && !line.contains("fn is_down(") {
+            let asked: Vec<&str> = line
+                .match_indices("is_down(")
+                .map(|(j, _)| line[j + "is_down(".len()..].split(')').next().unwrap_or(""))
+                .collect();
+            for key in asked {
+                if !MODIFIER_KEYS.contains(&key.trim()) {
+                    problems.push(format!(
+                        "{at}: is_down may only ask about {MODIFIER_KEYS:?}, not {key}"
+                    ));
+                }
+            }
+        }
+    }
+    problems
+}
+
+#[test]
+fn hooks_only_watch_the_mouse() {
+    let src = manifest_dir().join("src");
+    let mut files = Vec::new();
+    rust_files(&src, &mut files);
+    let mut problems = Vec::new();
+    for file in &files {
+        let rel = file
+            .strip_prefix(&src)
+            .unwrap_or(file)
+            .display()
+            .to_string()
+            .replace(std::path::MAIN_SEPARATOR, "/");
+        problems.extend(hook_problems(&rel, &fs::read_to_string(file).unwrap()));
+    }
+    assert!(
+        problems.is_empty(),
+        "hook guard failed:
+{}",
+        problems.join(
+            "
+"
+        )
+    );
+    let hook = fs::read_to_string(src.join("dictionary/hook.rs")).unwrap();
+    assert_eq!(hook.matches("SetWindowsHookExW(").count(), 1, "one hook only");
+}
+
+#[test]
+fn hook_guard_catches_other_hooks_and_keys() {
+    assert!(hook_problems("dictionary/hook.rs", "SetWindowsHookExW(WH_MOUSE_LL, p, None, 0)")
+        .is_empty());
+    assert!(
+        hook_problems("dictionary/hook.rs", "is_down(VK_CONTROL) && is_down(VK_SHIFT)").is_empty()
+    );
+    assert!(!hook_problems("dictionary/hook.rs", "SetWindowsHookExW(WH_KEYBOARD_LL, p)").is_empty());
+    assert!(!hook_problems("dictionary/hook.rs", "WH_GETMESSAGE").is_empty());
+    assert!(!hook_problems("dictionary/hook.rs", "is_down(VK_A)").is_empty());
+    assert!(!hook_problems("dictionary/hook.rs", "GetAsyncKeyState(0x41)").is_empty());
+    assert!(!hook_problems("chat.rs", "SetWindowsHookExW(WH_MOUSE_LL, p)").is_empty());
+    assert!(!hook_problems("chat.rs", "GetAsyncKeyState(VK_CONTROL.0 as i32)").is_empty());
 }
