@@ -1,0 +1,46 @@
+name: Audit
+
+# Checks the locked dependencies against the RustSec and npm advisory databases.
+# Kept out of the required checks: a new advisory can appear without any code change,
+# and it should raise a red flag, not block unrelated PRs.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - src-tauri/Cargo.lock
+      - src-tauri/Cargo.toml
+      - package-lock.json
+      - package.json
+      - .github/workflows/audit.yml
+  schedule:
+    # Mondays, 06:00 UTC: catches advisories published since the last change.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit
+        working-directory: src-tauri
+        run: cargo audit
+
+  npm:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Fails on high or critical advisories; lower ones are listed in the log.
+      - run: npm audit --audit-level=high
