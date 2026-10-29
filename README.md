@@ -65,7 +65,7 @@ computer.
 | --- | --- |
 | No file, process, clipboard or input access | The app contains no file-write, process-launch, clipboard-write or input-synthesis code. An automated scan ([`src-tauri/tests/safety_scan.rs`](src-tauri/tests/safety_scan.rs)) fails the build if such APIs, extra capabilities or extra permissions appear. |
 | Looks only when you ask | mouce takes a picture of your screen only when you press "Look at my screen" or start Circle to look up. Pictures stay in memory and are never saved; only the part you circle (or the screen you chose to share) goes to the AI you picked, and saved chat history keeps text only. |
-| Writes only to its own folder | A single storage module writes to disk, and only inside the app's data folder. |
+| Writes only to its own folder | A single storage module writes to disk, and only inside the app's data folder. The log goes to the app's own log folder; the scan rejects any other log location. |
 | API keys stay secret | Keys are stored in Windows Credential Manager. They are written from Settings and read only by the Rust backend to reach the provider you picked; they never reach the web view. |
 | No surprise browsing | The only address the app ever opens in your browser is the Ollama download page. |
 | One system change, with your consent | "Start with Windows" adds the app's own startup entry, and only if you turn it on. |
@@ -113,6 +113,13 @@ When mouce starts for the first time, it checks whether Ollama is installed and 
 offers to download a starter model. To use an online provider instead, choose **Use an online
 AI** and enter your API key. To open Settings later, right-click the mouce icon in the system
 tray.
+
+### Logs
+
+If something goes wrong, mouce records it in `%LOCALAPPDATA%\com.mouce.app\logs\mouce.log`
+(paste that path into File Explorer's address bar). The log holds start-up lines, warnings,
+errors and crash details; it never contains your chats, screen pictures or API keys. It keeps
+at most three files of about 1 MB each, replacing the oldest.
 
 ## Roadmap
 

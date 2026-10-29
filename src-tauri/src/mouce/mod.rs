@@ -137,7 +137,7 @@ fn watch_moves(app: &AppHandle, window: &tauri::WebviewWindow) {
                 let mut s = state.settings.lock().unwrap_or_else(|e| e.into_inner());
                 s.mouce_position = Some(pos);
                 if let Err(e) = settings::save(&state.store, &s) {
-                    eprintln!("could not save mouce position: {e}");
+                    log::warn!("could not save mouce position: {e}");
                 }
             }
         });
@@ -258,7 +258,7 @@ fn open_or_build(
         let built = build(&app);
         drop(mark);
         if let Err(e) = built {
-            eprintln!("could not open {label} window: {e}");
+            log::warn!("could not open {label} window: {e}");
         }
     });
 }
@@ -293,7 +293,7 @@ fn open_window(
 
 fn log_failure<E: std::fmt::Display>(what: &str, result: Result<(), E>) {
     if let Err(e) = result {
-        eprintln!("could not {what}: {e}");
+        log::warn!("could not {what}: {e}");
     }
 }
 

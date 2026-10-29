@@ -89,7 +89,7 @@ fn toggle_mouce(app: &AppHandle, pause_item: &MenuItem<tauri::Wry>) {
         Ok(()) => {
             let _ = pause_item.set_text(next.label);
         }
-        Err(e) => eprintln!("could not toggle the mouce: {e}"),
+        Err(e) => log::warn!("could not toggle the mouce: {e}"),
     }
 }
 
