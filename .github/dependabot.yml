@@ -1,6 +1,8 @@
 # Dependabot opens PRs for security fixes as soon as an advisory appears, and for routine
 # updates once a week. Minor and patch updates are grouped into one PR per ecosystem;
-# major updates (which can break things) each get their own PR.
+# major updates (which can break things) each get their own PR. Packages that must stay on
+# matching versions are grouped for every kind of update, so they never arrive split.
+# A dependency joins the first group it matches.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -8,6 +10,10 @@ updates:
     schedule:
       interval: weekly
     groups:
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      tauri:
+        patterns: ["@tauri-apps/*"]
       npm-minor-and-patch:
         update-types: [minor, patch]
 
@@ -16,6 +22,8 @@ updates:
     schedule:
       interval: weekly
     groups:
+      tauri:
+        patterns: ["tauri", "tauri-*"]
       cargo-minor-and-patch:
         update-types: [minor, patch]
 
