@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { calendarDelete, calendarSetDone } from "../lib/ipc";
+import { calendarDelete, calendarSetDone, calendarSkipDay } from "../lib/ipc";
 import type { CalendarItem } from "../lib/types";
 import { Icon } from "../ui/Icon";
 import { dayLabel, localMs } from "./dates";
-import { repeatText } from "./ItemForm";
+import { repeatText, timeRange } from "./ItemForm";
 
 /** "Reminds 10 minutes before", for an event with a reminder. */
 export function reminderText(item: CalendarItem): string | null {
@@ -23,9 +23,9 @@ export function isOverdue(item: CalendarItem, now: Date): boolean {
 
 /** When it is: "All day", "15:00", or with the day ("Tomorrow 15:00") when `withDay` is set. */
 export function whenLabel(item: CalendarItem, now: Date, withDay: boolean): string {
-  const time = item.time ?? "All day";
+  const time = item.time ? timeRange(item.time, item.end_time) : "All day";
   if (!withDay) return time;
-  return `${dayLabel(item.date, now)}${item.time ? " " + item.time : ", all day"}`;
+  return `${dayLabel(item.date, now)}${item.time ? " " + time : ", all day"}`;
 }
 
 /**
@@ -79,8 +79,13 @@ function ItemRow(props: {
             <button type="button" onClick={() => setConfirming(false)}>
               Keep
             </button>
+            {item.repeat && item.kind === "event" && (
+              <button type="button" className="danger" onClick={() => void calendarSkipDay(item.id, item.date).catch(fail)}>
+                This day
+              </button>
+            )}
             <button type="button" className="danger" onClick={() => void calendarDelete(item.id).catch(fail)}>
-              {item.repeat ? "Delete every time" : "Delete"}
+              {item.repeat ? "Every time" : "Delete"}
             </button>
           </div>
         ) : (

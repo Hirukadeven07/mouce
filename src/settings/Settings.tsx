@@ -58,6 +58,12 @@ export function Settings() {
     keysNote: useId(),
     dictionary: useId(),
     dictionaryNote: useId(),
+    plans: useId(),
+    calendarNote: useId(),
+    quiet: useId(),
+    quietFrom: useId(),
+    quietTo: useId(),
+    fullScreen: useId(),
   };
   const [autostart, setAutostartState] = useState<boolean | null>(null);
   const [autostartError, setAutostartError] = useState<string | null>(null);
@@ -149,6 +155,72 @@ export function Settings() {
         dictionary built into mouce, which works offline. With an AI set up, the word and its
         sentence also go to it, to explain the word as it is used there. Password boxes are never
         read.
+      </p>
+
+      <h2 className="group-title">Calendar</h2>
+      <div className="group">
+        <div className="form-row">
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.plans}>
+              Answer questions about my plans in the chat
+            </label>
+            <Switch
+              id={ids.plans}
+              checked={settings.calendar_in_chat}
+              aria-describedby={ids.calendarNote}
+              onChange={(e) => void save({ calendar_in_chat: e.target.checked })}
+            />
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.quiet}>
+              Quiet hours
+              <small>Reminders wait until quiet hours end.</small>
+            </label>
+            <Switch
+              id={ids.quiet}
+              checked={settings.quiet_hours}
+              onChange={(e) => void save({ quiet_hours: e.target.checked })}
+            />
+          </div>
+          {settings.quiet_hours && (
+            <div className="form-line quiet-times">
+              <label htmlFor={ids.quietFrom}>From</label>
+              <input
+                id={ids.quietFrom}
+                type="time"
+                value={settings.quiet_from}
+                onChange={(e) => e.target.value && void save({ quiet_from: e.target.value })}
+              />
+              <label htmlFor={ids.quietTo}>to</label>
+              <input
+                id={ids.quietTo}
+                type="time"
+                value={settings.quiet_to}
+                onChange={(e) => e.target.value && void save({ quiet_to: e.target.value })}
+              />
+            </div>
+          )}
+        </div>
+        <div className="form-row">
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.fullScreen}>
+              Wait while an app is full screen
+              <small>A film, a presentation or a game.</small>
+            </label>
+            <Switch
+              id={ids.fullScreen}
+              checked={settings.wait_for_full_screen}
+              onChange={(e) => void save({ wait_for_full_screen: e.target.checked })}
+            />
+          </div>
+        </div>
+      </div>
+      <p className="group-footer" id={ids.calendarNote}>
+        When you ask the chat about your plans (&ldquo;what&rsquo;s on tomorrow?&rdquo;), your events for the
+        next two weeks and your reminders go to the AI you picked above with that question. Your
+        calendar is kept on this computer.
       </p>
 
       <h2 className="group-title">Privacy</h2>

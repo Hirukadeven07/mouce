@@ -42,6 +42,7 @@ pub struct Draft {
     pub title: String,
     pub date: Option<String>,
     pub time: Option<String>,
+    pub end_time: Option<String>,
     pub repeat: Option<Repeat>,
     /// False when the AI could not be asked or its answer could not be read: the title is
     /// then the note itself.
@@ -51,7 +52,14 @@ pub struct Draft {
 impl Draft {
     /// The note as it was typed, for the user to finish by hand.
     pub fn as_typed(note: &str) -> Draft {
-        Draft { title: tidy_title(note), date: None, time: None, repeat: None, understood: false }
+        Draft {
+            title: tidy_title(note),
+            date: None,
+            time: None,
+            end_time: None,
+            repeat: None,
+            understood: false,
+        }
     }
 }
 
@@ -78,11 +86,13 @@ fn system_prompt(kind: Kind, today: &Today) -> String {
         "You read a short note the user typed into mouce, a helper on their Windows \
 desktop, describing {what}. Today is {weekday} {date} and the time is {time}. Reply with \
 only a JSON object and nothing else, like this: \
-{{\"title\": \"Dentist\", \"date\": \"YYYY-MM-DD\", \"time\": \"HH:MM\", \"repeat\": null}}. \
+{{\"title\": \"Dentist\", \"date\": \"YYYY-MM-DD\", \"time\": \"HH:MM\", \"end\": null, \
+\"repeat\": null}}. \
 The title says what it is in a few words, without the date or time and without words \
 like \"remind me to\", \"every\" or \"add\"; start it with a capital letter. Work out \
 words like \"tomorrow\" or \"next Friday\" from today's date. Use the 24-hour clock. Use \
-null for the date or the time when the note does not give one. When it happens again and \
+null for the date or the time when the note does not give one. When it gives when it \
+ends (\"from 2 to 4pm\"), put that in \"end\" as \"HH:MM\"; otherwise use null. When it happens again and \
 again, set \"repeat\" to \"daily\", \"weekdays\" (Monday to Friday), \"weekly\", \
 \"monthly\" or \"yearly\", and the date to the first time; otherwise use null. For \
 example, if today were Monday 2026-03-02, \"remind me to call mum tomorrow at 6pm\" would \
@@ -114,6 +124,7 @@ struct Answer {
     title: Option<String>,
     date: Option<String>,
     time: Option<String>,
+    end: Option<String>,
     repeat: Option<String>,
 }
 
@@ -143,6 +154,12 @@ pub fn read_answer(answer: &str, note: &str) -> Option<Draft> {
     let date = parsed.date.filter(|d| valid_date(d));
     let time = parsed.time.as_deref().and_then(normal_time);
     let repeat = parsed.repeat.as_deref().and_then(read_repeat);
+    // An end only means something after a start.
+    let end_time = parsed
+        .end
+        .as_deref()
+        .and_then(normal_time)
+        .filter(|end| time.as_ref().is_some_and(|start| end > start));
     if title.is_none() && date.is_none() && time.is_none() {
         return None;
     }
@@ -150,6 +167,7 @@ pub fn read_answer(answer: &str, note: &str) -> Option<Draft> {
         title: title.unwrap_or_else(|| tidy_title(note)),
         date,
         time,
+        end_time,
         repeat,
         understood: true,
     })
@@ -207,6 +225,7 @@ mod tests {
                 title: "Dentist".into(),
                 date: Some("2026-10-31".into()),
                 time: Some("15:00".into()),
+                end_time: None,
                 repeat: None,
                 understood: true
             }
@@ -253,6 +272,7 @@ mod tests {
                 title: "dentist tomorrow".into(),
                 date: None,
                 time: None,
+                end_time: None,
                 repeat: None,
                 understood: false
             }
@@ -278,5 +298,17 @@ mod tests {
     fn the_prompt_explains_repeats() {
         let system = request("m".into(), Kind::Event, &today(), "x").system.unwrap();
         assert!(system.contains(r#""repeat": "weekly""#));
+    }
+
+    #[test]
+    fn an_end_is_read_only_after_the_start() {
+        let read = |time: &str, end: &str| {
+            let answer = format!(r#"{{"title": "Meeting", "time": {time}, "end": {end}}}"#);
+            read_answer(&answer, "meeting").unwrap().end_time
+        };
+        assert_eq!(read(r#""14:00""#, r#""16:00""#).as_deref(), Some("16:00"));
+        assert_eq!(read(r#""14:00""#, r#""13:00""#), None);
+        assert_eq!(read("null", r#""16:00""#), None);
+        assert_eq!(read(r#""14:00""#, "null"), None);
     }
 }

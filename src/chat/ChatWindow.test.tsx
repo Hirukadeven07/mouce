@@ -22,6 +22,11 @@ const baseSettings: Settings = {
   first_run_done: true,
   liquid_glass: true,
   dictionary_enabled: true,
+  calendar_in_chat: true,
+  quiet_hours: false,
+  quiet_from: "22:00",
+  quiet_to: "07:00",
+  wait_for_full_screen: true,
 };
 
 const done = (text: string, extra: Partial<ChatReply> = {}): ChatReply => ({
@@ -41,14 +46,14 @@ let attachmentCb: ((preview: string | null) => void) | undefined;
 let draftCb: ((text: string) => void) | undefined;
 
 function answerWith(chunks: string[], extra: Partial<ChatReply> = {}) {
-  vi.mocked(ipc.chatSend).mockImplementation(async (text, look, onDelta) => {
+  vi.mocked(ipc.chatSend).mockImplementation(async (text, look, _plans, onDelta) => {
     chunks.forEach(onDelta);
     const answer = chunks.join("");
     // Like Rust: a waiting circled area goes with the question unless the screen is shared.
     const circled = !look && attachment !== null;
     if (circled) attachment = null;
     const question = text || (look ? LOOK_QUESTION : CIRCLE_QUESTION);
-    saved.push({ role: "user", text: question, looked: look, circled });
+    saved.push({ role: "user", text: question, looked: look, circled, calendar: _plans });
     if (answer) saved.push({ role: "assistant", text: answer, looked: false, circled: false });
     return done(answer, extra);
   });
@@ -140,7 +145,7 @@ describe("ChatWindow", () => {
     const input = screen.getByRole("textbox", { name: "Message" });
     await waitFor(() => expect(input).toHaveFocus());
     await userEvent.type(input, "hi mouce{Enter}");
-    expect(ipc.chatSend).toHaveBeenCalledWith("hi mouce", false, expect.any(Function));
+    expect(ipc.chatSend).toHaveBeenCalledWith("hi mouce", false, false, expect.any(Function));
     expect(await screen.findByText("Hello there")).toBeInTheDocument();
     expect(screen.getByText("hi mouce")).toBeInTheDocument();
     expect(input).toHaveValue("");
@@ -173,7 +178,7 @@ describe("ChatWindow", () => {
     expect(lookButton).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText(/It stays on this computer/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
-    expect(ipc.chatSend).toHaveBeenCalledWith("", true, expect.any(Function));
+    expect(ipc.chatSend).toHaveBeenCalledWith("", true, false, expect.any(Function));
     expect(await screen.findByText("A spreadsheet")).toBeInTheDocument();
     expect(screen.getByText(LOOK_QUESTION)).toBeInTheDocument();
     expect(lookButton).toHaveAttribute("aria-pressed", "false");
@@ -183,14 +188,14 @@ describe("ChatWindow", () => {
     answerWith(["Your desktop"]);
     render(<ChatWindow />);
     await userEvent.click(screen.getByRole("button", { name: LOOK_QUESTION }));
-    expect(ipc.chatSend).toHaveBeenCalledWith("", true, expect.any(Function));
+    expect(ipc.chatSend).toHaveBeenCalledWith("", true, false, expect.any(Function));
     expect(await screen.findByText("Your desktop")).toBeInTheDocument();
   });
 
   it("shows Stop while answering and stops when pressed", async () => {
     let finish: (r: ChatReply) => void = () => {};
     let write: (chunk: string) => void = () => {};
-    vi.mocked(ipc.chatSend).mockImplementation((text, look, onDelta) => {
+    vi.mocked(ipc.chatSend).mockImplementation((text, look, _plans, onDelta) => {
       write = onDelta;
       saved.push({ role: "user", text, looked: look, circled: false });
       return new Promise((resolve) => {
@@ -244,6 +249,7 @@ describe("ChatWindow", () => {
       title: "Call mum",
       date: "2026-10-31",
       start_date: "2026-10-31",
+      end_time: null,
       time: "18:00",
       remind_before: null,
       repeat: "weekly",
@@ -256,6 +262,7 @@ describe("ChatWindow", () => {
         title: "Call mum",
         date: "2026-10-31",
         time: "18:00",
+        end_time: null,
         repeat: "weekly",
         understood: true,
       });
@@ -297,9 +304,28 @@ describe("ChatWindow", () => {
       await user.type(screen.getByRole("textbox", { name: "Message" }), "remind me how loops work{Enter}");
       await screen.findByRole("form", { name: "New reminder" });
       await user.click(screen.getByRole("button", { name: "Ask mouce about it instead" }));
-      expect(ipc.chatSend).toHaveBeenCalledWith("remind me how loops work", false, expect.any(Function));
+      expect(ipc.chatSend).toHaveBeenCalledWith("remind me how loops work", false, false, expect.any(Function));
       expect(await screen.findByText("Sure, here's how.")).toBeInTheDocument();
       expect(screen.queryByRole("form", { name: "New reminder" })).not.toBeInTheDocument();
+    });
+
+    it("takes the user's plans to the AI for a question about them, and says so", async () => {
+      answerWith(["The dentist at 3."]);
+      const user = userEvent.setup();
+      render(<ChatWindow />);
+      await user.type(screen.getByRole("textbox", { name: "Message" }), "what's on tomorrow?{Enter}");
+      expect(ipc.chatSend).toHaveBeenCalledWith("what's on tomorrow?", false, true, expect.any(Function));
+      expect(await screen.findByText("Your plans")).toBeInTheDocument();
+    });
+
+    it("keeps the plans back when Settings say so", async () => {
+      vi.mocked(ipc.getSettings).mockResolvedValue({ ...baseSettings, calendar_in_chat: false });
+      answerWith(["I can't see your calendar."]);
+      const user = userEvent.setup();
+      render(<ChatWindow />);
+      await screen.findByText(/Local/);
+      await user.type(screen.getByRole("textbox", { name: "Message" }), "what's on tomorrow?{Enter}");
+      expect(ipc.chatSend).toHaveBeenCalledWith("what's on tomorrow?", false, false, expect.any(Function));
     });
 
     it("leaves a question about the screen alone", async () => {
@@ -308,7 +334,7 @@ describe("ChatWindow", () => {
       render(<ChatWindow />);
       await user.click(screen.getByRole("button", { name: "Look at my screen" }));
       await user.type(screen.getByRole("textbox", { name: "Message" }), "remind me what this is{Enter}");
-      expect(ipc.chatSend).toHaveBeenCalledWith("remind me what this is", true, expect.any(Function));
+      expect(ipc.chatSend).toHaveBeenCalledWith("remind me what this is", true, false, expect.any(Function));
       expect(ipc.calendarUnderstand).not.toHaveBeenCalled();
     });
   });
@@ -393,7 +419,7 @@ describe("ChatWindow with Circle to look up", () => {
     const input = screen.getByRole("textbox", { name: "Message" });
     expect(input).toHaveFocus();
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
-    expect(ipc.chatSend).toHaveBeenCalledWith("", false, expect.any(Function));
+    expect(ipc.chatSend).toHaveBeenCalledWith("", false, false, expect.any(Function));
     expect(await screen.findByText("The mouce logo")).toBeInTheDocument();
     expect(screen.getByText(CIRCLE_QUESTION)).toBeInTheDocument();
     expect(screen.getByText("Circled", { selector: ".bubble-chip" })).toBeInTheDocument();

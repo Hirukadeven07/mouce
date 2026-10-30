@@ -34,6 +34,14 @@ export interface Settings {
   liquid_glass: boolean;
   /** Ctrl + right-click a word in any app to look it up. */
   dictionary_enabled: boolean;
+  /** Questions about plans in the chat are answered from the calendar. */
+  calendar_in_chat: boolean;
+  /** Reminders wait from `quiet_from` until `quiet_to` ("HH:MM"). */
+  quiet_hours: boolean;
+  quiet_from: string;
+  quiet_to: string;
+  /** Reminders wait while an app fills the screen. */
+  wait_for_full_screen: boolean;
 }
 
 export type MouceState = "idle" | "thinking" | "looking" | "reminder";
@@ -52,6 +60,8 @@ export interface ChatTurn {
   looked: boolean;
   /** The user circled part of their screen for this message. */
   circled: boolean;
+  /** The user's plans from the calendar went with this message. */
+  calendar?: boolean;
 }
 
 /** Part of the screen as fractions (0 to 1) of its width and height. */
@@ -125,6 +135,8 @@ export interface CalendarItem {
   start_date: string;
   /** "HH:MM", 24-hour; null is an all-day event. */
   time: string | null;
+  /** Timed events only: when it ends, "HH:MM" on the same day. */
+  end_time: string | null;
   /** Events only: minutes before the start to remind; null is no reminder. */
   remind_before: number | null;
   repeat: Repeat | null;
@@ -136,13 +148,17 @@ export interface CalendarItem {
 
 /** An event or reminder to add or change (`calendar::Input`). Rust works out when it
  * reminds. */
-export type CalendarInput = Pick<CalendarItem, "kind" | "title" | "date" | "time" | "remind_before" | "repeat">;
+export type CalendarInput = Pick<
+  CalendarItem,
+  "kind" | "title" | "date" | "time" | "end_time" | "remind_before" | "repeat"
+>;
 
 /** What the AI read from a note, for the user to check (`calendar::understand::Draft`). */
 export interface CalendarDraft {
   title: string;
   date: string | null;
   time: string | null;
+  end_time: string | null;
   repeat: Repeat | null;
   /** False when the AI could not read the note: the title is the note itself. */
   understood: boolean;

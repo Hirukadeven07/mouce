@@ -101,6 +101,9 @@ pub fn update_settings_impl(
     next.chat_hotkey = next.chat_hotkey.trim().to_string();
     next.circle_hotkey = next.circle_hotkey.trim().to_string();
     hotkey::check_distinct(&next.chat_hotkey, &next.circle_hotkey)?;
+    let quiet_time = |t: &str| calendar::normal_time(t).ok_or("Pick a time for quiet hours");
+    next.quiet_from = quiet_time(&next.quiet_from)?;
+    next.quiet_to = quiet_time(&next.quiet_to)?;
     if next.history_enabled != current.history_enabled {
         let chat = lock_chat(state);
         let result = if next.history_enabled {
@@ -409,6 +412,21 @@ pub async fn chat_send_impl<F>(
 where
     F: Future<Output = Result<ImageInput, String>> + Send,
 {
+    chat_send_with_plans(state, text, screen, None, on_delta).await
+}
+
+/// `chat_send_impl`, with the user's `plans` from the calendar going with a question about
+/// them (unless the screen or a circled area goes instead).
+pub async fn chat_send_with_plans<F>(
+    state: &AppState,
+    text: &str,
+    screen: Option<F>,
+    plans: Option<String>,
+    on_delta: &mut (dyn FnMut(&str) + Send),
+) -> Result<ChatReply, String>
+where
+    F: Future<Output = Result<ImageInput, String>> + Send,
+{
     let Some(_slot) = BusySlot::try_take(&state.chat_active) else {
         return Err("mouce is still answering".to_string());
     };
@@ -434,9 +452,10 @@ where
         None => None,
     };
     let settings = get_settings_impl(state);
-    match (screen, circled.image()) {
-        (None, Some(image)) => lock_chat(state).push_user_circled(text, image),
-        (screen, _) => lock_chat(state).push_user(text, screen),
+    match (screen, circled.image(), plans) {
+        (None, Some(image), _) => lock_chat(state).push_user_circled(text, image),
+        (None, None, Some(plans)) => lock_chat(state).push_user_with_plans(text, plans),
+        (screen, _, _) => lock_chat(state).push_user(text, screen),
     }
 
     let chat_request = |model: String| lock_chat(state).request(model);
@@ -530,14 +549,29 @@ pub fn chat_history(state: State<'_, AppState>) -> Vec<Turn> {
     lock_chat(&state).turns().to_vec()
 }
 
-/// Asks mouce `text`, after looking at the screen when `look` is set. Each piece of the
-/// answer is sent down `on_delta` as it arrives.
+/// How many days of plans go with a question about them, today included.
+const PLANS_DAYS: i64 = 14;
+
+/// The user's plans for a question about them, when that is turned on in Settings.
+fn plans_for_chat(state: &AppState) -> Option<String> {
+    if !lock(state).calendar_in_chat {
+        return None;
+    }
+    calendar::plans_text(&state.store, alerts::now_ms(), PLANS_DAYS)
+        .inspect_err(|e| log::warn!("could not read the calendar for the chat: {e}"))
+        .ok()
+}
+
+/// Asks mouce `text`, after looking at the screen when `look` is set, or with the user's
+/// plans when `plans` is set (a question about them). Each piece of the answer is sent down
+/// `on_delta` as it arrives.
 #[tauri::command]
 pub async fn chat_send(
     app: AppHandle,
     state: State<'_, AppState>,
     text: String,
     look: bool,
+    plans: Option<bool>,
     on_delta: Channel<String>,
 ) -> Result<ChatReply, String> {
     let _ = app.emit(mouce::MOUCE_STATE_EVENT, if look { "looking" } else { "thinking" });
@@ -546,7 +580,8 @@ pub async fn chat_send(
         let _ = app.emit(mouce::MOUCE_STATE_EVENT, "idle");
     });
     let screen = look.then(|| look_at_screen(app.clone()));
-    chat_send_impl(&state, &text, screen, &mut |d| {
+    let plans = if plans == Some(true) && !look { plans_for_chat(&state) } else { None };
+    chat_send_with_plans(&state, &text, screen, plans, &mut |d| {
         let _ = on_delta.send(d.to_string());
     })
     .await
@@ -779,6 +814,50 @@ pub fn calendar_set_done(
     }
     calendar_changed(&app);
     Ok(())
+}
+
+/// Leaves day `date` out of repeating event `id` ("just this day").
+#[tauri::command(async)]
+pub fn calendar_skip_day(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    date: String,
+) -> Result<(), String> {
+    calendar::skip_day(&state.store, id, &date, alerts::now_ms())
+        .map_err(|e| e.to_string())?
+        .ok_or("That is no longer in your calendar")?;
+    alerts::forget(&app, id);
+    calendar_changed(&app);
+    Ok(())
+}
+
+/// Changes day `date` of repeating event `id` on its own, to what `input` says.
+pub fn calendar_change_day_impl(
+    state: &AppState,
+    id: i64,
+    date: &str,
+    input: calendar::Input,
+    now: i64,
+) -> Result<calendar::Item, String> {
+    let input = calendar::check(input)?;
+    calendar::change_day(&state.store, id, date, &input, now)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "That is no longer in your calendar".to_string())
+}
+
+#[tauri::command(async)]
+pub fn calendar_change_day(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    date: String,
+    input: calendar::Input,
+) -> Result<calendar::Item, String> {
+    let changed = calendar_change_day_impl(&state, id, &date, input, alerts::now_ms())?;
+    alerts::forget(&app, id);
+    calendar_changed(&app);
+    Ok(changed)
 }
 
 /// Removes every reminder that has been done.
@@ -1637,6 +1716,7 @@ mod tests {
             text: "hi".into(),
             looked: false,
             circled: false,
+            calendar: false,
         }];
         chat::save_history(&store, &turns).unwrap();
         let on = AppState::new(
@@ -1705,6 +1785,7 @@ mod tests {
                 title: "Dentist".into(),
                 date: Some("2026-10-31".into()),
                 time: Some("15:00".into()),
+                end_time: None,
                 repeat: None,
                 understood: true,
             }
@@ -1747,6 +1828,7 @@ mod tests {
             title: title.into(),
             date: "2026-10-30".into(),
             time: None,
+            end_time: None,
             remind_before: None,
             repeat: None,
         }
@@ -1764,5 +1846,60 @@ mod tests {
         let found = calendar_between_impl(&st, "2026-10-01", "2026-10-31").unwrap();
         assert_eq!(found, vec![changed]);
         assert!(calendar_between_impl(&st, "October", "2026-10-31").is_err());
+    }
+
+    #[tokio::test]
+    async fn a_question_about_plans_takes_them_to_the_ai() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(ndjson_reply("Lunch at 1.")))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let (_d, st) = state_for(&server);
+        let plans = Some("- Team lunch".to_string());
+        let reply = chat_send_with_plans(&st, "what's on?", no_look(), plans, &mut |_| {}).await;
+        assert_eq!(reply.unwrap().text, "Lunch at 1.");
+        assert!(lock_chat(&st).turns()[0].calendar);
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let system = body["messages"][0]["content"].as_str().unwrap();
+        assert!(system.contains(chat::PLANS_PROMPT) && system.ends_with("- Team lunch"));
+    }
+
+    #[test]
+    fn plans_only_go_to_the_chat_when_settings_allow() {
+        let (_d, st) = state(Settings::default());
+        assert!(plans_for_chat(&st).unwrap().contains("Nothing else is planned"));
+        st.settings.lock().unwrap().calendar_in_chat = false;
+        assert_eq!(plans_for_chat(&st), None);
+    }
+
+    #[test]
+    fn one_day_of_a_series_changes_on_its_own() {
+        let (_d, st) = state(Settings::default());
+        let weekly = calendar::Input {
+            repeat: Some(calendar::date::Repeat::Weekly),
+            time: Some("07:00".into()),
+            ..event_input("Gym")
+        };
+        let series = calendar_save_impl(&st, None, weekly, 0).unwrap();
+        let moved = calendar::Input { time: Some("18:00".into()), ..event_input("Gym") };
+        let alone =
+            calendar_change_day_impl(&st, series.id, "2026-11-06", moved.clone(), 0).unwrap();
+        assert_eq!((alone.repeat, alone.time.as_deref()), (None, Some("18:00")));
+        assert!(calendar_change_day_impl(&st, 999, "2026-11-06", moved.clone(), 0).is_err());
+        let bad = calendar::Input { title: " ".into(), ..moved };
+        assert!(calendar_change_day_impl(&st, series.id, "2026-11-13", bad, 0).is_err());
+    }
+
+    #[test]
+    fn quiet_hour_times_are_checked_when_settings_are_saved() {
+        let (_d, st) = state(Settings::default());
+        let next = Settings { quiet_from: "9:30".into(), ..Default::default() };
+        assert_eq!(update_settings_impl(&st, next).unwrap().0.quiet_from, "09:30");
+        let bad = Settings { quiet_to: "late".into(), ..Default::default() };
+        assert!(update_settings_impl(&st, bad).is_err());
     }
 }

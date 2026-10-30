@@ -128,16 +128,18 @@ export function chatHistory(): Promise<ChatTurn[]> {
   return invoke<ChatTurn[]>("chat_history");
 }
 
-// Asks mouce `text`, taking a picture of the screen first when `look` is set. Each piece
-// of the answer arrives in `onDelta` as it is written.
+// Asks mouce `text`, taking a picture of the screen first when `look` is set, or with the
+// user's plans from the calendar when `plans` is set. Each piece of the answer arrives in
+// `onDelta` as it is written.
 export function chatSend(
   text: string,
   look: boolean,
+  plans: boolean,
   onDelta: (chunk: string) => void,
 ): Promise<ChatReply> {
   const channel = new Channel<string>();
   channel.onmessage = onDelta;
-  return invoke<ChatReply>("chat_send", { text, look, onDelta: channel });
+  return invoke<ChatReply>("chat_send", { text, look, plans, onDelta: channel });
 }
 
 export function chatStop(): Promise<void> {
@@ -228,6 +230,16 @@ export function calendarReminders(): Promise<CalendarItem[]> {
 // Adds an event or reminder, or changes `id` when it is given.
 export function calendarSave(id: number | null, input: CalendarInput): Promise<CalendarItem> {
   return invoke<CalendarItem>("calendar_save", { id, input });
+}
+
+// Leaves day `date` out of repeating event `id` ("just this day").
+export function calendarSkipDay(id: number, date: string): Promise<void> {
+  return invoke<void>("calendar_skip_day", { id, date });
+}
+
+// Changes day `date` of repeating event `id` on its own; returns the new event for that day.
+export function calendarChangeDay(id: number, date: string, input: CalendarInput): Promise<CalendarItem> {
+  return invoke<CalendarItem>("calendar_change_day", { id, date, input });
 }
 
 export function calendarDelete(id: number): Promise<void> {

@@ -1,15 +1,26 @@
 //! Gentle reminders. A timer checks the calendar every few seconds; when an event or
 //! reminder is due, a small card opens beside the mouce (without taking the keyboard) and
 //! the mouce glows until each one is snoozed, done or put away. There is no sound.
+//!
+//! Reminders wait during the user's quiet hours, and while an app fills the screen (a film,
+//! a presentation, a game); they appear once that is over.
 
 use super::date;
 use super::{Item, Kind};
 use crate::mouce::{self, position::Rect};
+use crate::settings::Settings;
 use crate::AppState;
 use serde::Deserialize;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl};
+use windows::Win32::Foundation::RECT;
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONULL,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetClassNameW, GetDesktopWindow, GetForegroundWindow, GetShellWindow, GetWindowRect,
+};
 
 pub const CARD_LABEL: &str = "alerts";
 /// Event to every window: payload is the list of `Item`s due now, sent whenever it changes.
@@ -108,6 +119,68 @@ pub fn check_impl(state: &AppState, now: i64) -> bool {
     }
 }
 
+/// Whether `minute` (minutes into the day) is within quiet hours from `from` to `to`
+/// ("HH:MM"). Hours that cross midnight (22:00 to 07:00) work; the same start and end is
+/// never quiet.
+pub fn in_quiet_hours(minute: u32, from: &str, to: &str) -> bool {
+    match (date::minutes(from), date::minutes(to)) {
+        (Some(from), Some(to)) if from < to => (from..to).contains(&minute),
+        (Some(from), Some(to)) if from > to => minute >= from || minute < to,
+        _ => false,
+    }
+}
+
+/// Whether it is quiet hours at `now` by `settings`.
+pub fn quiet_now(settings: &Settings, now: i64) -> bool {
+    settings.quiet_hours
+        && date::local_day(now).is_some_and(|(_, minute)| {
+            in_quiet_hours(minute, &settings.quiet_from, &settings.quiet_to)
+        })
+}
+
+/// Whether `window` covers the whole of `screen`.
+fn covers(window: RECT, screen: RECT) -> bool {
+    window.left <= screen.left
+        && window.top <= screen.top
+        && window.right >= screen.right
+        && window.bottom >= screen.bottom
+}
+
+/// Whether the window in front fills its whole screen, as a film, a presentation or a game
+/// does. The desktop does not count.
+fn full_screen_app() -> bool {
+    // SAFETY: these only ask about the window in front and its screen; each handle is checked
+    // before it is used, and nothing is changed.
+    unsafe {
+        let window = GetForegroundWindow();
+        if window.is_invalid() || window == GetShellWindow() || window == GetDesktopWindow() {
+            return false;
+        }
+        let mut class = [0u16; 32];
+        let len = usize::try_from(GetClassNameW(window, &mut class)).unwrap_or(0);
+        let class = String::from_utf16_lossy(&class[..len.min(class.len())]);
+        if class == "Progman" || class == "WorkerW" {
+            return false;
+        }
+        let mut rect = RECT::default();
+        if GetWindowRect(window, &mut rect).is_err() {
+            return false;
+        }
+        let monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONULL);
+        if monitor.is_invalid() {
+            return false;
+        }
+        let mut info =
+            MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+        GetMonitorInfoW(monitor, &mut info).as_bool() && covers(rect, info.rcMonitor)
+    }
+}
+
+/// Whether reminders should wait at `now`: quiet hours, or an app filling the screen.
+fn should_wait(settings: &Settings, now: i64) -> bool {
+    quiet_now(settings, now) || (settings.wait_for_full_screen && full_screen_app())
+}
+
 /// Starts the timer. Its first check is straight away, for anything due while mouce was
 /// not running.
 pub fn start(app: &AppHandle) {
@@ -118,7 +191,13 @@ pub fn start(app: &AppHandle) {
         loop {
             tick.tick().await;
             let Some(state) = app.try_state::<AppState>() else { continue };
-            if check_impl(&state, now_ms()) {
+            let now = now_ms();
+            let settings = lock(&state.settings).clone();
+            // Nothing is taken while waiting, so it is all still due when the wait is over.
+            if should_wait(&settings, now) {
+                continue;
+            }
+            if check_impl(&state, now) {
                 announce(&app);
             }
         }
@@ -283,6 +362,7 @@ mod tests {
             title: title.into(),
             date: "2026-10-30".into(),
             time: Some(time.into()),
+            end_time: None,
             remind_before: (kind == Kind::Event).then_some(0),
             repeat: None,
         };
@@ -361,6 +441,7 @@ mod tests {
             date: "2026-10-30".into(),
             start_date: "2026-10-30".into(),
             time: None,
+            end_time: None,
             remind_before: None,
             repeat: None,
             alert_at: Some(1),
@@ -386,5 +467,36 @@ mod tests {
                 Action::Done
             ]
         );
+    }
+
+    #[test]
+    fn quiet_hours_can_cross_midnight() {
+        let m = |t: &str| date::minutes(t).unwrap();
+        assert!(in_quiet_hours(m("23:00"), "22:00", "07:00"));
+        assert!(in_quiet_hours(m("06:59"), "22:00", "07:00"));
+        assert!(!in_quiet_hours(m("07:00"), "22:00", "07:00"));
+        assert!(!in_quiet_hours(m("12:00"), "22:00", "07:00"));
+        assert!(in_quiet_hours(m("13:30"), "13:00", "14:00"));
+        assert!(!in_quiet_hours(m("14:00"), "13:00", "14:00"));
+        assert!(!in_quiet_hours(m("13:00"), "13:00", "13:00"), "an empty range is never quiet");
+        assert!(!in_quiet_hours(m("13:00"), "noon", "14:00"));
+    }
+
+    #[test]
+    fn quiet_hours_only_count_when_turned_on() {
+        let quiet = Settings { quiet_hours: true, ..Settings::default() };
+        assert!(quiet_now(&quiet, at("23:30")));
+        assert!(!quiet_now(&quiet, at("12:00")));
+        assert!(!quiet_now(&Settings::default(), at("23:30")));
+        let off_both = Settings { wait_for_full_screen: false, ..Settings::default() };
+        assert!(!should_wait(&off_both, at("23:30")));
+    }
+
+    #[test]
+    fn a_window_covering_its_screen_is_full_screen() {
+        let screen = RECT { left: 0, top: 0, right: 1920, bottom: 1080 };
+        assert!(covers(screen, screen));
+        assert!(covers(RECT { left: -8, top: -8, right: 1928, bottom: 1088 }, screen));
+        assert!(!covers(RECT { left: 0, top: 0, right: 1920, bottom: 1040 }, screen), "taskbar");
     }
 }

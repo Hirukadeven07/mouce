@@ -52,6 +52,16 @@ pub struct Settings {
     pub liquid_glass: bool,
     /// Ctrl + right-click a word in any app to look it up. Off removes the mouse hook.
     pub dictionary_enabled: bool,
+    /// Questions about plans in the chat are answered from the calendar, which then goes to
+    /// the AI with that question.
+    pub calendar_in_chat: bool,
+    /// Reminders wait from `quiet_from` until `quiet_to` ("HH:MM", across midnight when the
+    /// end is earlier than the start).
+    pub quiet_hours: bool,
+    pub quiet_from: String,
+    pub quiet_to: String,
+    /// Reminders wait while an app fills the screen (a film, a presentation, a game).
+    pub wait_for_full_screen: bool,
 }
 
 impl Default for Settings {
@@ -70,6 +80,11 @@ impl Default for Settings {
             first_run_done: false,
             liquid_glass: true,
             dictionary_enabled: true,
+            calendar_in_chat: true,
+            quiet_hours: false,
+            quiet_from: "22:00".to_string(),
+            quiet_to: "07:00".to_string(),
+            wait_for_full_screen: true,
         }
     }
 }
@@ -134,6 +149,10 @@ mod tests {
         assert!(!d.first_run_done);
         assert!(d.liquid_glass);
         assert!(d.dictionary_enabled);
+        assert!(d.calendar_in_chat);
+        assert!(!d.quiet_hours);
+        assert_eq!((d.quiet_from.as_str(), d.quiet_to.as_str()), ("22:00", "07:00"));
+        assert!(d.wait_for_full_screen);
         assert_eq!(MouceSize::Small.px(), 28);
         assert_eq!(MouceSize::Medium.px(), 36);
         assert_eq!(MouceSize::Large.px(), 48);
@@ -156,6 +175,7 @@ mod tests {
         assert_eq!(loaded.provider, ProviderId::Groq);
         assert!(loaded.liquid_glass);
         assert!(loaded.dictionary_enabled, "the dictionary is on for settings saved before it");
+        assert!(loaded.calendar_in_chat && loaded.wait_for_full_screen && !loaded.quiet_hours);
     }
 
     #[test]

@@ -7,7 +7,7 @@ vi.mock("../lib/ipc");
 
 import * as ipc from "../lib/ipc";
 import { CalendarTab } from "./CalendarTab";
-import { inputFrom, valuesFromDraft, valuesFromItem } from "./ItemForm";
+import { clashes, clashText, inputFrom, valuesFromDraft, valuesFromItem } from "./ItemForm";
 
 // Friday 30 October 2026, just after two in the afternoon.
 const now = new Date(2026, 9, 30, 14, 5);
@@ -19,6 +19,7 @@ function item(over: Partial<CalendarItem>): CalendarItem {
     title: "Dentist",
     date: "2026-10-30",
     start_date: over.date ?? "2026-10-30",
+    end_time: null,
     time: "15:00",
     remind_before: 10,
     repeat: null,
@@ -42,9 +43,9 @@ beforeEach(() => {
 
 describe("the form's values", () => {
   it("fills in what the note left out", () => {
-    const draft = { title: "Gym", date: null, time: null, repeat: null, understood: true };
+    const draft = { title: "Gym", date: null, time: null, end_time: null, repeat: null, understood: true };
     const event = valuesFromDraft("event", draft, now);
-    expect(event).toEqual({ title: "Gym", date: "2026-10-30", time: "", allDay: true, remind: "", repeat: "" });
+    expect(event).toEqual({ title: "Gym", date: "2026-10-30", time: "", end: "", allDay: true, remind: "", repeat: "" });
     const timed = valuesFromDraft("event", { ...draft, date: "2026-11-02", time: "07:30", repeat: "weekly" }, now);
     expect(timed).toMatchObject({ allDay: false, time: "07:30", remind: "10", repeat: "weekly" });
     const reminder = valuesFromDraft("reminder", { ...draft, title: "Call" }, now);
@@ -52,12 +53,13 @@ describe("the form's values", () => {
   });
 
   it("sends what to save, leaving when to remind to Rust", () => {
-    const values = { title: "Dentist", date: "2026-10-31", time: "15:00", allDay: false, remind: "30", repeat: "" as const };
+    const values = { title: "Dentist", date: "2026-10-31", time: "15:00", end: "", allDay: false, remind: "30", repeat: "" as const };
     expect(inputFrom("event", values)).toEqual({
       kind: "event",
       title: "Dentist",
       date: "2026-10-31",
       time: "15:00",
+      end_time: null,
       remind_before: 30,
       repeat: null,
     });
@@ -67,6 +69,19 @@ describe("the form's values", () => {
       repeat: "yearly",
     });
     expect(inputFrom("reminder", values)).toMatchObject({ remind_before: null, time: "15:00" });
+  });
+
+  it("finds clashes, taking an event with no end to last an hour", () => {
+    const v = { title: "Call", date: "2026-10-30", time: "14:30", end: "", allDay: false, remind: "", repeat: "" as const };
+    const dentist = item({ id: 1, time: "15:00", end_time: null });
+    const lunch = item({ id: 2, title: "Lunch", time: "12:00", end_time: "13:00" });
+    const holiday = item({ id: 3, title: "Holiday", time: null });
+    expect(clashes(v, [dentist, lunch, holiday], null)).toEqual([dentist]);
+    expect(clashes({ ...v, end: "14:45" }, [dentist], null)).toEqual([]);
+    expect(clashes(v, [dentist], 1)).toEqual([]);
+    expect(clashes({ ...v, time: "" }, [dentist], null)).toEqual([]);
+    expect(clashText([dentist, lunch])).toBe("Overlaps “Dentist” (15:00) and “Lunch” (12:00–13:00).");
+    expect(clashText([])).toBeNull();
   });
 
   it("changes a repeating item from where it starts", () => {
@@ -83,6 +98,7 @@ describe("CalendarTab", () => {
       title: "Dentist",
       date: "2026-10-31",
       time: "15:00",
+      end_time: null,
       repeat: null,
       understood: true,
     });
@@ -99,7 +115,7 @@ describe("CalendarTab", () => {
     const form = await screen.findByRole("form", { name: "New event" });
     expect(within(form).getByLabelText("What")).toHaveValue("Dentist");
     expect(within(form).getByLabelText("Date")).toHaveValue("2026-10-31");
-    expect(within(form).getByLabelText("Time")).toHaveValue("15:00");
+    expect(within(form).getByLabelText("Starts at")).toHaveValue("15:00");
     expect(within(form).getByLabelText("Reminder")).toHaveValue("10");
     expect(ipc.calendarSave).not.toHaveBeenCalled();
 
@@ -110,6 +126,7 @@ describe("CalendarTab", () => {
       title: "Dentist",
       date: "2026-10-31",
       time: "15:00",
+      end_time: null,
       remind_before: 60,
       repeat: null,
     });
@@ -144,10 +161,10 @@ describe("CalendarTab", () => {
     render(<CalendarTab today={now} />);
     await user.click(screen.getByRole("button", { name: "Add" }));
     const form = screen.getByRole("form", { name: "New event" });
-    expect(within(form).queryByLabelText("Time")).not.toBeInTheDocument();
+    expect(within(form).queryByLabelText("Starts at")).not.toBeInTheDocument();
     expect(within(form).getByRole("option", { name: "On the day, at 9:00" })).toBeInTheDocument();
     await user.click(within(form).getByRole("checkbox", { name: "All day" }));
-    expect(within(form).getByLabelText("Time")).toBeInTheDocument();
+    expect(within(form).getByLabelText("Starts at")).toBeInTheDocument();
     expect(within(form).getByLabelText("Reminder")).toHaveValue("10");
   });
 
@@ -229,7 +246,7 @@ describe("CalendarTab", () => {
     expect(ipc.calendarDelete).toHaveBeenCalledWith(5);
   });
 
-  it("says how a repeating event repeats, and that deleting removes every time", async () => {
+  it("says how a repeating event repeats, and deletes one day or every time", async () => {
     vi.mocked(ipc.calendarBetween).mockResolvedValue([
       item({ id: 6, title: "Gym", start_date: "2026-10-02", repeat: "weekly", remind_before: null }),
     ]);
@@ -238,8 +255,12 @@ describe("CalendarTab", () => {
     render(<CalendarTab today={now} />);
     expect(await screen.findByText("Gym")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: /Plans for/ })).toHaveTextContent("15:00 · Every week");
+    vi.mocked(ipc.calendarSkipDay).mockResolvedValue();
     await user.click(screen.getByRole("button", { name: "Delete “Gym”" }));
-    await user.click(screen.getByRole("button", { name: "Delete every time" }));
+    await user.click(screen.getByRole("button", { name: "This day" }));
+    expect(ipc.calendarSkipDay).toHaveBeenCalledWith(6, "2026-10-30");
+    expect(ipc.calendarDelete).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Every time" }));
     expect(ipc.calendarDelete).toHaveBeenCalledWith(6);
   });
 
@@ -255,6 +276,50 @@ describe("CalendarTab", () => {
     await user.type(within(form).getByLabelText("What"), "Rent");
     await user.click(within(form).getByRole("button", { name: "Save event" }));
     expect(ipc.calendarSave).toHaveBeenCalledWith(null, expect.objectContaining({ title: "Rent", repeat: "monthly" }));
+  });
+
+  it("keeps an end time and warns about a clash without stopping the save", async () => {
+    const lunch = item({ id: 9, title: "Team lunch", time: "12:30", end_time: "13:30" });
+    vi.mocked(ipc.calendarBetween).mockResolvedValue([lunch]);
+    vi.mocked(ipc.calendarSave).mockResolvedValue(item({ id: 10, title: "Call" }));
+    const user = userEvent.setup();
+    render(<CalendarTab today={now} />);
+    await screen.findByText("Team lunch");
+    expect(screen.getByRole("list", { name: /Plans for/ })).toHaveTextContent("12:30–13:30");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    const form = screen.getByRole("form", { name: "New event" });
+    await user.click(within(form).getByRole("checkbox", { name: "All day" }));
+    await user.type(within(form).getByLabelText("What"), "Call");
+    await user.type(within(form).getByLabelText("Starts at"), "13:00");
+    await user.type(within(form).getByLabelText("Ends at"), "13:45");
+    expect(await within(form).findByRole("status")).toHaveTextContent("Overlaps “Team lunch” (12:30–13:30).");
+    await user.click(within(form).getByRole("button", { name: "Save event" }));
+    expect(ipc.calendarSave).toHaveBeenCalledWith(null, expect.objectContaining({ time: "13:00", end_time: "13:45" }));
+  });
+
+  it("changes one day of a series on its own, or every time", async () => {
+    const gym = item({ id: 6, title: "Gym", date: "2026-10-30", start_date: "2026-10-02", repeat: "weekly" });
+    vi.mocked(ipc.calendarBetween).mockResolvedValue([gym]);
+    vi.mocked(ipc.calendarChangeDay).mockResolvedValue(item({ id: 11, title: "Gym" }));
+    vi.mocked(ipc.calendarSave).mockResolvedValue(gym);
+    const user = userEvent.setup();
+    render(<CalendarTab today={now} />);
+    await user.click(await screen.findByRole("button", { name: "Change “Gym”" }));
+    let form = screen.getByRole("form", { name: "Change event" });
+    expect(within(form).getByRole("radio", { name: "Only Friday 30 October" })).toBeChecked();
+    expect(within(form).getByLabelText("Date")).toHaveValue("2026-10-30");
+    expect(within(form).queryByLabelText("Repeats")).not.toBeInTheDocument();
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+    expect(ipc.calendarChangeDay).toHaveBeenCalledWith(6, "2026-10-30", expect.objectContaining({ repeat: null }));
+    expect(ipc.calendarSave).not.toHaveBeenCalled();
+
+    await user.click(await screen.findByRole("button", { name: "Change “Gym”" }));
+    form = screen.getByRole("form", { name: "Change event" });
+    await user.click(within(form).getByRole("radio", { name: "Every time" }));
+    expect(within(form).getByLabelText("Starts")).toHaveValue("2026-10-02");
+    expect(within(form).getByLabelText("Repeats")).toHaveValue("weekly");
+    await user.click(within(form).getByRole("button", { name: "Save" }));
+    expect(ipc.calendarSave).toHaveBeenCalledWith(6, expect.objectContaining({ date: "2026-10-02", repeat: "weekly" }));
   });
 
   it("loads again when the calendar changes in another window", async () => {

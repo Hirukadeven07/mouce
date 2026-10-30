@@ -21,6 +21,11 @@ const baseSettings: Settings = {
   first_run_done: true,
   liquid_glass: true,
   dictionary_enabled: true,
+  calendar_in_chat: true,
+  quiet_hours: false,
+  quiet_from: "22:00",
+  quiet_to: "07:00",
+  wait_for_full_screen: true,
 };
 
 describe("Mouce", () => {
@@ -176,6 +181,7 @@ describe("MouceWindow", () => {
       title: "Call mum",
       date: "2026-10-30",
       start_date: "2026-10-30",
+      end_time: null,
       time: "18:00",
       remind_before: null,
       repeat: null,
@@ -204,6 +210,7 @@ describe("MouceWindow", () => {
         title: "Meeting",
         date: "2026-10-30",
         start_date: "2026-10-30",
+        end_time: null,
         time: "10:00",
         remind_before: 10,
         repeat: null,

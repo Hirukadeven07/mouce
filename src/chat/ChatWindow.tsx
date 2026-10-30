@@ -22,7 +22,7 @@ import type { ChatTurn, Settings } from "../lib/types";
 import { PROVIDERS } from "../settings/AiSettings";
 import { errorText } from "../settings/useSettings";
 import { Icon } from "../ui/Icon";
-import { calendarIntent } from "./calendarIntent";
+import { calendarIntent, plansQuestion } from "./calendarIntent";
 import { ChatPlan, type Plan } from "./ChatPlan";
 
 /** Matches `chat::LOOK_QUESTION` in Rust: the question when only the screen is shared. */
@@ -55,6 +55,7 @@ interface Pending {
   question: string;
   looked: boolean;
   circled: boolean;
+  calendar: boolean;
   answer: string;
 }
 
@@ -74,6 +75,12 @@ function Bubble(props: { turn: ChatTurn; note?: string; writing?: boolean }) {
           <span className="bubble-chip">
             <Icon name="circle" size={13} />
             Circled
+          </span>
+        )}
+        {turn.calendar && (
+          <span className="bubble-chip">
+            <Icon name="calendar" size={13} />
+            Your plans
           </span>
         )}
         {turn.text && <p className="bubble-text">{turn.text}</p>}
@@ -199,16 +206,18 @@ export function ChatView(props: {
       return;
     }
     setPlan(null);
+    // Asked about their plans: the calendar goes with the question (if Settings allow).
+    const calendar = !withScreen && !circled && (settings?.calendar_in_chat ?? true) && plansQuestion(text);
     setError(null);
     setDraft("");
     setLook(false);
     const question = text || (withScreen ? LOOK_QUESTION : CIRCLE_QUESTION);
     answering.current = true;
-    setPending({ question, looked: withScreen, circled, answer: "" });
+    setPending({ question, looked: withScreen, circled, calendar, answer: "" });
     if (circled) setAttachment(null);
     let note: string | null = null;
     try {
-      const reply = await chatSend(text, withScreen, (chunk) => {
+      const reply = await chatSend(text, withScreen, calendar, (chunk) => {
         if (!mounted.current) return;
         setPending((p) => p && { ...p, answer: p.answer + chunk });
       });
@@ -346,6 +355,7 @@ export function ChatView(props: {
                 text: pending.question,
                 looked: pending.looked,
                 circled: pending.circled,
+                calendar: pending.calendar,
               }}
             />
             <Bubble
