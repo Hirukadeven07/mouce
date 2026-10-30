@@ -1,7 +1,7 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChatReply, ChatTurn, Settings } from "../lib/types";
+import type { CalendarItem, ChatReply, ChatTurn, Settings } from "../lib/types";
 
 vi.mock("../lib/ipc");
 
@@ -235,6 +235,82 @@ describe("ChatWindow", () => {
     expect(
       await screen.findByText("Answered by the local AI because Claude didn't respond"),
     ).toBeInTheDocument();
+  });
+
+  describe("remind me…", () => {
+    const callMum: CalendarItem = {
+      id: 3,
+      kind: "reminder",
+      title: "Call mum",
+      date: "2026-10-31",
+      start_date: "2026-10-31",
+      time: "18:00",
+      remind_before: null,
+      repeat: "weekly",
+      alert_at: 1,
+      done: false,
+    };
+
+    beforeEach(() => {
+      vi.mocked(ipc.calendarUnderstand).mockResolvedValue({
+        title: "Call mum",
+        date: "2026-10-31",
+        time: "18:00",
+        repeat: "weekly",
+        understood: true,
+      });
+      vi.mocked(ipc.calendarSave).mockResolvedValue(callMum);
+    });
+
+    it("opens a form to check instead of asking the AI, and says what was saved", async () => {
+      const user = userEvent.setup();
+      render(<ChatWindow />);
+      await user.type(screen.getByRole("textbox", { name: "Message" }), "remind me to call mum every Saturday at 6pm{Enter}");
+      const form = await screen.findByRole("form", { name: "New reminder" });
+      expect(ipc.chatSend).not.toHaveBeenCalled();
+      expect(ipc.calendarUnderstand).toHaveBeenCalledWith(
+        "reminder",
+        "remind me to call mum every Saturday at 6pm",
+        expect.anything(),
+      );
+      expect(screen.getByText("remind me to call mum every Saturday at 6pm")).toBeInTheDocument();
+      expect(within(form).getByLabelText("Repeats")).toHaveValue("weekly");
+      await user.click(within(form).getByRole("button", { name: "Save reminder" }));
+      expect(ipc.calendarSave).toHaveBeenCalledWith(null, expect.objectContaining({ kind: "reminder", repeat: "weekly" }));
+      expect(await screen.findByRole("status")).toHaveTextContent(/Reminder set: “Call mum”, .* at 18:00, every week\./);
+    });
+
+    it("says nothing was saved when cancelled", async () => {
+      const user = userEvent.setup();
+      render(<ChatWindow />);
+      await user.type(screen.getByRole("textbox", { name: "Message" }), "add dentist on Friday to my calendar{Enter}");
+      const form = await screen.findByRole("form", { name: "New event" });
+      await user.click(within(form).getByRole("button", { name: "Cancel" }));
+      expect(screen.getByText("Okay, nothing was saved.")).toBeInTheDocument();
+      expect(ipc.calendarSave).not.toHaveBeenCalled();
+    });
+
+    it("can ask the AI about it instead", async () => {
+      answerWith(["Sure, here's how."]);
+      const user = userEvent.setup();
+      render(<ChatWindow />);
+      await user.type(screen.getByRole("textbox", { name: "Message" }), "remind me how loops work{Enter}");
+      await screen.findByRole("form", { name: "New reminder" });
+      await user.click(screen.getByRole("button", { name: "Ask mouce about it instead" }));
+      expect(ipc.chatSend).toHaveBeenCalledWith("remind me how loops work", false, expect.any(Function));
+      expect(await screen.findByText("Sure, here's how.")).toBeInTheDocument();
+      expect(screen.queryByRole("form", { name: "New reminder" })).not.toBeInTheDocument();
+    });
+
+    it("leaves a question about the screen alone", async () => {
+      answerWith(["That is a calendar."]);
+      const user = userEvent.setup();
+      render(<ChatWindow />);
+      await user.click(screen.getByRole("button", { name: "Look at my screen" }));
+      await user.type(screen.getByRole("textbox", { name: "Message" }), "remind me what this is{Enter}");
+      expect(ipc.chatSend).toHaveBeenCalledWith("remind me what this is", true, expect.any(Function));
+      expect(ipc.calendarUnderstand).not.toHaveBeenCalled();
+    });
   });
 
   it("New chat clears the conversation", async () => {

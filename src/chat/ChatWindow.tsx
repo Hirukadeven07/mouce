@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import logoUrl from "../assets/mouce.png";
+import { readNote } from "../home/ItemForm";
 import { activeModel } from "../home/useAiStatus";
 import {
   chatAttachment,
@@ -21,6 +22,8 @@ import type { ChatTurn, Settings } from "../lib/types";
 import { PROVIDERS } from "../settings/AiSettings";
 import { errorText } from "../settings/useSettings";
 import { Icon } from "../ui/Icon";
+import { calendarIntent } from "./calendarIntent";
+import { ChatPlan, type Plan } from "./ChatPlan";
 
 /** Matches `chat::LOOK_QUESTION` in Rust: the question when only the screen is shared. */
 export const LOOK_QUESTION = "What's on my screen?";
@@ -114,6 +117,8 @@ export function ChatView(props: {
   // Preview of the circled area waiting to be asked about.
   const [attachment, setAttachment] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A "remind me…" message being turned into a reminder, shown after the conversation.
+  const [plan, setPlan] = useState<Plan | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mounted = useRef(true);
@@ -170,12 +175,30 @@ export function ChatView(props: {
   useEffect(() => {
     const scroller = scrollRef.current;
     if (scroller) scroller.scrollTop = scroller.scrollHeight;
-  }, [turns, pending]);
+  }, [turns, pending, plan]);
 
-  async function ask(text: string, withScreen: boolean) {
+  /** Reads a "remind me…" or "add … to my calendar" message into a form to check, instead
+   * of asking the AI a question. */
+  async function startPlan(note: string, kind: Plan["kind"]) {
+    setError(null);
+    setDraft("");
+    setPlan({ kind, note, draft: null, outcome: null });
+    const draft = await readNote(kind, note, new Date());
+    if (!mounted.current) return;
+    // A newer message may have replaced this one meanwhile.
+    setPlan((p) => (p && p.note === note && p.draft === null ? { ...p, draft } : p));
+  }
+
+  async function ask(text: string, withScreen: boolean, asQuestion = false) {
     // Rust sends the circled area unless the whole screen is shared instead.
     const circled = !withScreen && attachment !== null;
     if (pending || (!text && !withScreen && !circled)) return;
+    const kind = asQuestion || withScreen || circled ? null : calendarIntent(text);
+    if (kind) {
+      void startPlan(text, kind);
+      return;
+    }
+    setPlan(null);
     setError(null);
     setDraft("");
     setLook(false);
@@ -229,7 +252,9 @@ export function ChatView(props: {
 
   const model = settings ? activeModel(settings) : null;
   const busy = pending !== null;
-  const canSend = !busy && (draft.trim() !== "" || look || attachment !== null);
+  // Reading a "remind me…" message: nothing to stop, but nothing new to send yet either.
+  const reading = plan !== null && plan.draft === null && plan.outcome === null;
+  const canSend = !busy && !reading && (draft.trim() !== "" || look || attachment !== null);
   const circleKeys = settings?.circle_hotkey;
 
   return (
@@ -297,7 +322,7 @@ export function ChatView(props: {
       </header>
 
       <div className="chat-log" role="log" aria-label="Conversation">
-        {turns.length === 0 && !pending && (
+        {turns.length === 0 && !pending && !plan && (
           <div className="chat-empty">
             <p className="headline">Ask me anything</p>
             <p className="muted">Or let me look at your screen.</p>
@@ -328,6 +353,16 @@ export function ChatView(props: {
               writing={pending.answer === ""}
             />
           </>
+        )}
+        {plan && (
+          <ChatPlan
+            plan={plan}
+            onDone={(outcome) => {
+              setPlan((p) => p && { ...p, outcome });
+              inputRef.current?.focus();
+            }}
+            onAsk={() => void ask(plan.note, false, true)}
+          />
         )}
       </div>
 

@@ -45,6 +45,13 @@ async function root(): Promise<React.ReactElement> {
       const { DictionaryCard } = await import("./dictionary/DictionaryCard");
       return <DictionaryCard />;
     }
+    case "alerts": {
+      await pageWindow();
+      document.documentElement.classList.add("alerts-window-page");
+      await import("./alerts/alerts.css");
+      const { AlertCard } = await import("./alerts/AlertCard");
+      return <AlertCard />;
+    }
     case "firstrun": {
       await pageWindow();
       await import("./firstrun/firstrun.css");

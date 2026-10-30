@@ -350,3 +350,18 @@ html.page-window button.chip--on:hover:not(:disabled) {
   max-width: 760px;
   margin-inline: auto;
 }
+
+/* ---- "remind me…": the form to check, in the conversation ---- */
+
+.chat-plan {
+  align-items: stretch;
+}
+
+.chat-plan .item-form {
+  background: var(--surface);
+}
+
+html.page-window .chat-plan-ask {
+  align-self: flex-start;
+  margin-top: 4px;
+}

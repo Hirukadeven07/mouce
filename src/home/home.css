@@ -363,6 +363,195 @@ html.page-window button.nav-item[aria-selected="true"] {
   gap: 4px;
 }
 
+/* The month and the selected day side by side, the day below when there is no room. */
+.calendar-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  align-items: flex-start;
+  margin-top: 14px;
+}
+
+.calendar-body .month--large {
+  flex: none;
+  /* Seven 40px days with room around each. */
+  width: 320px;
+  max-width: 100%;
+  margin-bottom: 0;
+}
+
+.calendar-day {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.calendar-day-title {
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* A day you can pick. The cell keeps the grid's spacing; the button is the round day. */
+.month-cell {
+  display: grid;
+  place-items: center;
+}
+
+html.page-window button.month-day {
+  position: relative;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-size: inherit;
+  font-weight: 400;
+}
+
+html.page-window button.month-day:hover:not(:disabled) {
+  background: var(--fill);
+}
+
+html.page-window button.month-day--other {
+  color: var(--label-3);
+}
+
+html.page-window button.month-day--today {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+html.page-window button.month-day--today:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+html.page-window button.month-day--selected:not(.month-day--today) {
+  background: var(--accent-tint);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* A dot under the number for a day with plans. */
+.month-day--marked {
+  position: relative;
+}
+
+.month-day--marked::after {
+  content: "";
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.month-day--today.month-day--marked::after {
+  background: var(--on-accent);
+}
+
+/* ---- lists of events and reminders ---- */
+
+.items {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 0;
+}
+
+.item + .item {
+  border-top: 1px solid var(--separator);
+}
+
+.item-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 6px 3px 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.item-done {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 2px 0 0;
+}
+
+.item-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-title {
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.item-when {
+  color: var(--label-2);
+  font-size: 12px;
+}
+
+.item--done .item-title {
+  color: var(--label-2);
+  text-decoration: line-through;
+}
+
+.item-late {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.item-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.item-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+html.page-window .item-actions button.icon-button {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  color: var(--label-2);
+  background: transparent;
+}
+
+html.page-window .item-actions button.icon-button:hover:not(:disabled) {
+  background: var(--fill);
+}
+
+.calendar .items,
+.reminders .card > .items {
+  margin-top: 4px;
+}
+
+.reminders {
+  display: grid;
+  gap: 14px;
+}
+
+.reminders .quick-add,
+.reminders .item-form {
+  margin-bottom: 10px;
+}
+
 /* ---- empty states ---- */
 
 .empty-state {

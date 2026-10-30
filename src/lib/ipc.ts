@@ -4,6 +4,11 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
+  AlertAction,
+  CalendarDraft,
+  CalendarInput,
+  CalendarItem,
+  CalendarKind,
   ChatReply,
   ChatTurn,
   HomeTabId,
@@ -13,6 +18,7 @@ import type {
   Selection,
   Settings,
   MouceState,
+  Today,
   WordCard,
 } from "./types";
 
@@ -208,4 +214,63 @@ export function circleCancel(): Promise<void> {
 
 export function onPullProgress(cb: (progress: PullProgress) => void): Promise<UnlistenFn> {
   return listen<PullProgress>("ollama-pull-progress", (e) => cb(e.payload));
+}
+
+// Events and reminders on the days `from` to `to` ("YYYY-MM-DD", both included).
+export function calendarBetween(from: string, to: string): Promise<CalendarItem[]> {
+  return invoke<CalendarItem[]>("calendar_between", { from, to });
+}
+
+export function calendarReminders(): Promise<CalendarItem[]> {
+  return invoke<CalendarItem[]>("calendar_reminders");
+}
+
+// Adds an event or reminder, or changes `id` when it is given.
+export function calendarSave(id: number | null, input: CalendarInput): Promise<CalendarItem> {
+  return invoke<CalendarItem>("calendar_save", { id, input });
+}
+
+export function calendarDelete(id: number): Promise<void> {
+  return invoke<void>("calendar_delete", { id });
+}
+
+export function calendarSetDone(id: number, done: boolean): Promise<void> {
+  return invoke<void>("calendar_set_done", { id, done });
+}
+
+export function calendarClearDone(): Promise<void> {
+  return invoke<void>("calendar_clear_done");
+}
+
+// Asks the AI to read a note ("dentist tomorrow at 3pm") into a draft for the user to check.
+export function calendarUnderstand(kind: CalendarKind, note: string, today: Today): Promise<CalendarDraft> {
+  return invoke<CalendarDraft>("calendar_understand", { kind, note, today });
+}
+
+// Saved events or reminders changed, in this window or another.
+export function onCalendarChanged(cb: () => void): Promise<UnlistenFn> {
+  return listen<null>("calendar-changed", () => cb());
+}
+
+// What is due now, shown on the card beside the mouce.
+export function alertsCurrent(): Promise<CalendarItem[]> {
+  return invoke<CalendarItem[]>("alerts_current");
+}
+
+export function onAlerts(cb: (due: CalendarItem[]) => void): Promise<UnlistenFn> {
+  return listen<CalendarItem[]>("calendar-alerts", (e) => cb(e.payload));
+}
+
+// The reminder card has laid out at `height` CSS pixels; Rust sizes and shows its window.
+export function alertsFit(height: number): Promise<void> {
+  return invoke<void>("alerts_fit", { height });
+}
+
+export function alertsAct(id: number, action: AlertAction): Promise<void> {
+  return invoke<void>("alerts_act", { id, action });
+}
+
+// Opens the home window on the Calendar or Reminders tab, where card item `id` is.
+export function alertsOpen(id: number): Promise<void> {
+  return invoke<void>("alerts_open", { id });
 }

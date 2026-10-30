@@ -57,6 +57,10 @@ describe("HomeWindow", () => {
     vi.mocked(ipc.chatTakeDraft).mockResolvedValue(null);
     vi.mocked(ipc.onChatDraft).mockResolvedValue(() => {});
     vi.mocked(ipc.closeChatPanel).mockResolvedValue();
+    // An empty calendar.
+    vi.mocked(ipc.calendarBetween).mockResolvedValue([]);
+    vi.mocked(ipc.calendarReminders).mockResolvedValue([]);
+    vi.mocked(ipc.onCalendarChanged).mockResolvedValue(() => {});
   });
 
   it("Ask mouce opens the chat", async () => {
@@ -243,6 +247,29 @@ describe("HomeWindow", () => {
       expect(screen.getByRole("heading", { name: monthTitle(today.getFullYear(), today.getMonth()) }))
         .toBeInTheDocument();
       expect(document.querySelector('[aria-current="date"]')).toHaveTextContent(String(today.getDate()));
+    });
+
+    it("lists the week's events under Coming up and open reminders apart", async () => {
+      const today = new Date();
+      const iso = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const base = { start_date: iso(today), remind_before: null, repeat: null, alert_at: null, done: false };
+      vi.mocked(ipc.calendarBetween).mockImplementation(async (from, to) =>
+        from === to
+          ? []
+          : [
+              { ...base, id: 1, kind: "event", title: "Team lunch", date: iso(today), time: "12:30" },
+              { ...base, id: 2, kind: "reminder", title: "Pay rent", date: iso(today), time: "09:00" },
+            ],
+      );
+      vi.mocked(ipc.calendarReminders).mockResolvedValue([
+        { ...base, id: 2, kind: "reminder", title: "Pay rent", date: iso(today), time: "23:59" },
+      ]);
+      render(<HomeWindow />);
+      const coming = await screen.findByRole("list", { name: "Coming up" });
+      expect(coming).toHaveTextContent("Team lunch");
+      expect(coming).not.toHaveTextContent("Pay rent");
+      expect(screen.getByRole("list", { name: "Reminders" })).toHaveTextContent("Pay rent");
     });
 
     it("pages through months and comes back to today", async () => {

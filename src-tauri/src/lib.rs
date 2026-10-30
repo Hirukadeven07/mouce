@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod calendar;
 pub mod chat;
 pub mod circle;
 pub mod commands;
@@ -44,12 +45,18 @@ pub struct AppState {
     pub dictionary: dictionary::DictionaryState,
     /// A question waiting for the chat to open ("Chat about this" on the word card).
     pub chat_draft: Mutex<Option<String>>,
+    /// The reminders due now, shown on the card beside the mouce.
+    pub alerts: calendar::alerts::AlertsState,
 }
 
 impl AppState {
     pub fn new(store: AppStore, settings: Settings, secrets: Secrets) -> AppState {
         let history =
             if settings.history_enabled { chat::load_history(&store) } else { Vec::new() };
+        // Without its table the calendar cannot save, but the rest of mouce still works.
+        if let Err(e) = calendar::init(&store) {
+            log::warn!("could not set up the calendar: {e}");
+        }
         AppState {
             store,
             settings: Mutex::new(settings),
@@ -64,6 +71,7 @@ impl AppState {
             circled: Mutex::new(None),
             dictionary: dictionary::DictionaryState::default(),
             chat_draft: Mutex::new(None),
+            alerts: calendar::alerts::AlertsState::default(),
         }
     }
 }
@@ -132,6 +140,7 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if let Err(e) = dictionary::start(app.handle(), settings.dictionary_enabled) {
         log::warn!("could not start the dictionary: {e}");
     }
+    calendar::alerts::start(app.handle());
     if !settings.first_run_done {
         mouce::open_firstrun(app.handle());
     }
@@ -241,6 +250,17 @@ pub fn run() -> Result<(), String> {
             commands::dictionary_fit,
             commands::dictionary_close,
             commands::dictionary_chat,
+            commands::calendar_between,
+            commands::calendar_reminders,
+            commands::calendar_save,
+            commands::calendar_delete,
+            commands::calendar_set_done,
+            commands::calendar_clear_done,
+            commands::calendar_understand,
+            commands::alerts_current,
+            commands::alerts_fit,
+            commands::alerts_act,
+            commands::alerts_open,
         ])
         .setup(|app| {
             // A setup error would make Tauri panic, which under the windows subsystem is a

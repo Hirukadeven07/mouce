@@ -1,0 +1,96 @@
+/* The reminder card beside the mouce. Like the word card, its window is transparent and has
+ * no frame or effects, so the page draws the card itself with room around it for the shadow. */
+
+/* `:root` outranks the page and Liquid Glass backgrounds in app.css, whatever the load order. */
+:root.page-window.alerts-window-page,
+:root.page-window.alerts-window-page body {
+  background: transparent;
+  overflow: hidden;
+}
+
+:root.page-window.alerts-window-page body::before {
+  display: none;
+}
+
+.alerts {
+  padding: 10px;
+}
+
+.alerts-card {
+  max-height: calc(100vh - 20px);
+  overflow-y: auto;
+  padding: 12px 14px;
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card), 0 8px 24px -8px rgba(20, 30, 60, 0.35);
+  animation: alerts-in 0.25s ease-out;
+}
+
+.alerts-label {
+  margin: 0 0 6px;
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.alerts-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.alerts-item + .alerts-item {
+  padding-top: 12px;
+  border-top: 1px solid var(--separator);
+}
+
+html.page-window button.alerts-title {
+  display: block;
+  min-height: 0;
+  margin: 0 0 0 -4px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--label);
+  text-align: left;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+html.page-window button.alerts-title:hover:not(:disabled) {
+  background: var(--fill);
+}
+
+html.page-window button.alerts-title:active:not(:disabled) {
+  transform: none;
+}
+
+.alerts-when {
+  margin: 2px 0 10px;
+  color: var(--label-2);
+  font-size: 13px;
+}
+
+.alerts-card .notice {
+  margin-top: 10px;
+}
+
+@keyframes alerts-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alerts-card {
+    animation: none;
+  }
+}

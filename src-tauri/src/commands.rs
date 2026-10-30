@@ -5,6 +5,7 @@
 //! API key: keys go in, and are only read inside Rust to talk to the chosen provider.
 
 use crate::ai::{self, ChatMessage, ChatRequest, ImageInput, Role};
+use crate::calendar::{self, alerts, understand};
 use crate::chat::{self, Conversation, Snip, Turn};
 use crate::ollama_setup::{self, OllamaStatus, PullProgress};
 use crate::settings::{self, ProviderId, Settings};
@@ -667,6 +668,165 @@ pub fn dictionary_close(app: AppHandle, id: u64) {
 #[tauri::command(async)]
 pub fn dictionary_chat(app: AppHandle, id: u64) -> Result<(), String> {
     dictionary::chat_about(&app, id)
+}
+
+// ---- calendar and reminders ----
+
+/// Tells every window the saved events or reminders changed, so each shows them again.
+fn calendar_changed(app: &AppHandle) {
+    let _ = app.emit(alerts::CHANGED_EVENT, ());
+}
+
+pub fn calendar_between_impl(
+    state: &AppState,
+    from: &str,
+    to: &str,
+) -> Result<Vec<calendar::Item>, String> {
+    if !calendar::valid_date(from) || !calendar::valid_date(to) {
+        return Err("Those are not dates".to_string());
+    }
+    calendar::between(&state.store, from, to).map_err(|e| e.to_string())
+}
+
+/// Adds an event or reminder, or changes event or reminder `id`.
+pub fn calendar_save_impl(
+    state: &AppState,
+    id: Option<i64>,
+    input: calendar::Input,
+    now: i64,
+) -> Result<calendar::Item, String> {
+    let input = calendar::check(input)?;
+    let saved = match id {
+        None => Some(calendar::add(&state.store, &input, now)),
+        Some(id) => calendar::update(&state.store, id, &input, now).transpose(),
+    };
+    saved.ok_or("It is no longer in your calendar")?.map_err(|e| e.to_string())
+}
+
+/// Reads a note the user typed ("dentist tomorrow at 3pm") into a draft for them to check.
+/// If the AI cannot be asked, or its answer cannot be read, the draft is the note itself.
+pub async fn calendar_understand_impl(
+    state: &AppState,
+    kind: calendar::Kind,
+    note: &str,
+    today: understand::Today,
+) -> Result<understand::Draft, String> {
+    let note = understand::check_note(note)?;
+    let today = today.check()?;
+    let settings = get_settings_impl(state);
+    let request = |model: String| understand::request(model, kind, &today, &note);
+    match ask_with_fallback(state, &settings, &request, &mut |_: &str| {}).await {
+        Ok((answer, _)) => Ok(understand::read_answer(&answer, &note)
+            .unwrap_or_else(|| understand::Draft::as_typed(&note))),
+        Err(e) => {
+            // The error only, never the note: what the user plans stays out of the log.
+            log::warn!("the AI could not read a calendar note: {e}");
+            Ok(understand::Draft::as_typed(&note))
+        }
+    }
+}
+
+/// Events and reminders on the days `from` to `to` ("YYYY-MM-DD", both included).
+#[tauri::command(async)]
+pub fn calendar_between(
+    state: State<'_, AppState>,
+    from: String,
+    to: String,
+) -> Result<Vec<calendar::Item>, String> {
+    calendar_between_impl(&state, &from, &to)
+}
+
+#[tauri::command(async)]
+pub fn calendar_reminders(state: State<'_, AppState>) -> Result<Vec<calendar::Item>, String> {
+    calendar::reminders(&state.store).map_err(|e| e.to_string())
+}
+
+/// Saves what the user checked: a new event or reminder, or a change to `id`.
+#[tauri::command(async)]
+pub fn calendar_save(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Option<i64>,
+    input: calendar::Input,
+) -> Result<calendar::Item, String> {
+    let saved = calendar_save_impl(&state, id, input, alerts::now_ms())?;
+    // A changed reminder time reminds anew, so the card no longer shows the old one.
+    alerts::forget(&app, saved.id);
+    calendar_changed(&app);
+    Ok(saved)
+}
+
+#[tauri::command(async)]
+pub fn calendar_delete(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    calendar::delete(&state.store, id).map_err(|e| e.to_string())?;
+    alerts::forget(&app, id);
+    calendar_changed(&app);
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn calendar_set_done(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    done: bool,
+) -> Result<(), String> {
+    calendar::set_done(&state.store, id, done, alerts::now_ms())
+        .map_err(|e| e.to_string())?
+        .ok_or("That reminder is gone")?;
+    if done {
+        alerts::forget(&app, id);
+    }
+    calendar_changed(&app);
+    Ok(())
+}
+
+/// Removes every reminder that has been done.
+#[tauri::command(async)]
+pub fn calendar_clear_done(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    calendar::clear_done(&state.store).map_err(|e| e.to_string())?;
+    calendar_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn calendar_understand(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    kind: calendar::Kind,
+    note: String,
+    today: understand::Today,
+) -> Result<understand::Draft, String> {
+    let _ = app.emit(mouce::MOUCE_STATE_EVENT, "thinking");
+    // Back to idle however this ends: finished, failed or cancelled.
+    let _idle = OnDrop::new(|| {
+        let _ = app.emit(mouce::MOUCE_STATE_EVENT, "idle");
+    });
+    calendar_understand_impl(&state, kind, &note, today).await
+}
+
+/// What is due now, for the reminder card and the mouce when their pages load.
+#[tauri::command(async)]
+pub fn alerts_current(state: State<'_, AppState>) -> Vec<calendar::Item> {
+    alerts::current_impl(&state)
+}
+
+/// The reminder card has laid out at `height` logical pixels: show it beside the mouce.
+#[tauri::command(async)]
+pub fn alerts_fit(app: AppHandle, height: f64) -> Result<(), String> {
+    alerts::fit_card(&app, height)
+}
+
+/// Opens the home window where reminder `id` on the card is.
+#[tauri::command(async)]
+pub fn alerts_open(app: AppHandle, id: i64) {
+    alerts::open(&app, id);
+}
+
+/// Snooze, done or "got it" for reminder `id` on the card.
+#[tauri::command(async)]
+pub fn alerts_act(app: AppHandle, id: i64, action: alerts::Action) -> Result<(), String> {
+    alerts::act(&app, id, action)
 }
 
 // ---- Ollama ----
@@ -1507,5 +1667,102 @@ mod tests {
         let hint = ollama_exe_hint_in(Some("C:\\Users\\x\\AppData\\Local".into()));
         assert!(hint.ends_with(Path::new("Programs").join("Ollama").join("ollama.exe")));
         assert!(!ollama_exe_hint_in(None).exists());
+    }
+
+    fn friday() -> understand::Today {
+        understand::Today {
+            date: "2026-10-30".into(),
+            time: "14:05".into(),
+            weekday: "Friday".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_calendar_note_is_read_by_the_ai_into_a_draft() {
+        let server = MockServer::start().await;
+        let answer = r#"{\"title\": \"Dentist\", \"date\": \"2026-10-31\", \"time\": \"15:00\"}"#;
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [{ "role": "system" }, { "role": "user", "content": "dentist tomorrow at 3pm" }]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_string(ndjson_reply(answer)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let (_d, st) = state_for(&server);
+        let draft = calendar_understand_impl(
+            &st,
+            calendar::Kind::Event,
+            "  dentist tomorrow at 3pm ",
+            friday(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            draft,
+            understand::Draft {
+                title: "Dentist".into(),
+                date: Some("2026-10-31".into()),
+                time: Some("15:00".into()),
+                repeat: None,
+                understood: true,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn without_an_ai_the_note_itself_is_the_draft() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let (_d, st) = state_for(&server);
+        let draft = calendar_understand_impl(&st, calendar::Kind::Reminder, "call mum", friday())
+            .await
+            .unwrap();
+        assert_eq!(draft, understand::Draft::as_typed("call mum"));
+    }
+
+    #[tokio::test]
+    async fn an_empty_note_or_a_bad_day_is_refused_before_asking() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let (_d, st) = state_for(&server);
+        let kind = calendar::Kind::Event;
+        assert!(calendar_understand_impl(&st, kind, "  ", friday()).await.is_err());
+        let bad = understand::Today { date: "soon".into(), ..friday() };
+        assert!(calendar_understand_impl(&st, kind, "x", bad).await.is_err());
+    }
+
+    fn event_input(title: &str) -> calendar::Input {
+        calendar::Input {
+            kind: calendar::Kind::Event,
+            title: title.into(),
+            date: "2026-10-30".into(),
+            time: None,
+            remind_before: None,
+            repeat: None,
+        }
+    }
+
+    #[test]
+    fn calendar_save_adds_changes_and_refuses_bad_input() {
+        let (_d, st) = state(Settings::default());
+        let added = calendar_save_impl(&st, None, event_input(" Dentist "), 0).unwrap();
+        assert_eq!(added.title, "Dentist");
+        let changed = calendar_save_impl(&st, Some(added.id), event_input("Doctor"), 0).unwrap();
+        assert_eq!((changed.id, changed.title.as_str()), (added.id, "Doctor"));
+        assert!(calendar_save_impl(&st, Some(added.id + 100), event_input("Gone"), 0).is_err());
+        assert!(calendar_save_impl(&st, None, event_input("  "), 0).is_err());
+        let found = calendar_between_impl(&st, "2026-10-01", "2026-10-31").unwrap();
+        assert_eq!(found, vec![changed]);
+        assert!(calendar_between_impl(&st, "October", "2026-10-31").is_err());
     }
 }
