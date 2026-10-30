@@ -17,6 +17,7 @@ function item(over: Partial<CalendarItem>): CalendarItem {
     title: "Dentist",
     date: "2026-10-30",
     start_date: "2026-10-30",
+    end_time: null,
     time: "15:00",
     remind_before: 10,
     repeat: null,

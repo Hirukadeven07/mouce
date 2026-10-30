@@ -17,6 +17,7 @@ function reminder(over: Partial<CalendarItem>): CalendarItem {
     title: "Submit the lab report",
     date: "2026-11-06",
     start_date: over.date ?? "2026-11-06",
+    end_time: null,
     time: "17:00",
     remind_before: null,
     repeat: null,
@@ -72,6 +73,7 @@ describe("RemindersTab", () => {
       title: "Call mum",
       date: "2026-10-31",
       time: null,
+      end_time: null,
       repeat: "daily",
       understood: true,
     });
@@ -92,6 +94,7 @@ describe("RemindersTab", () => {
       title: "Call mum",
       date: "2026-10-31",
       time: "09:00",
+      end_time: null,
       remind_before: null,
       repeat: "daily",
     });

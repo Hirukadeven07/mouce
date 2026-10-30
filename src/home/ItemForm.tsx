@@ -1,7 +1,7 @@
-import { useState, type FormEvent, type KeyboardEvent } from "react";
-import { calendarSave, calendarUnderstand } from "../lib/ipc";
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
+import { calendarBetween, calendarChangeDay, calendarSave, calendarUnderstand } from "../lib/ipc";
 import type { CalendarDraft, CalendarInput, CalendarItem, CalendarKind, Repeat } from "../lib/types";
-import { isoDate, suggestedTime, todayFor } from "./dates";
+import { fromIsoDate, isoDate, longDate, suggestedTime, todayFor } from "./dates";
 
 /** What the form holds. `remind` is minutes before, as text; "" is no reminder. `repeat`
  * is "" when it does not repeat. */
@@ -10,6 +10,8 @@ export interface FormValues {
   date: string;
   /** "HH:MM"; unused for an all-day event. */
   time: string;
+  /** "HH:MM", or "" for no end; events only. */
+  end: string;
   allDay: boolean;
   remind: string;
   repeat: Repeat | "";
@@ -60,12 +62,13 @@ export function valuesFromDraft(kind: CalendarKind, draft: CalendarDraft, now: D
   const repeat = draft.repeat ?? "";
   if (kind === "reminder") {
     const time = draft.time ?? suggestedTime(date, now);
-    return { title: draft.title, date, time, allDay: false, remind: "0", repeat };
+    return { title: draft.title, date, time, end: "", allDay: false, remind: "0", repeat };
   }
   return {
     title: draft.title,
     date,
     time: draft.time ?? "",
+    end: draft.end_time ?? "",
     allDay: draft.time === null,
     remind: draft.time === null ? "" : DEFAULT_TIMED_REMIND,
     repeat,
@@ -74,7 +77,8 @@ export function valuesFromDraft(kind: CalendarKind, draft: CalendarDraft, now: D
 
 /** An empty form for `date`. */
 export function blankValues(kind: CalendarKind, date: string, now: Date): FormValues {
-  return valuesFromDraft(kind, { title: "", date, time: null, repeat: null, understood: true }, now);
+  const empty = { title: "", date, time: null, end_time: null, repeat: null, understood: true };
+  return valuesFromDraft(kind, empty, now);
 }
 
 /** The form for changing a saved item. A repeating one is changed from where it starts. */
@@ -83,6 +87,7 @@ export function valuesFromItem(item: CalendarItem): FormValues {
     title: item.title,
     date: item.repeat ? item.start_date : item.date,
     time: item.time ?? "",
+    end: item.end_time ?? "",
     allDay: item.time === null,
     remind: item.kind === "reminder" ? "0" : item.remind_before === null ? "" : String(item.remind_before),
     repeat: item.repeat ?? "",
@@ -91,14 +96,70 @@ export function valuesFromItem(item: CalendarItem): FormValues {
 
 /** What to save. Rust works out when it reminds. */
 export function inputFrom(kind: CalendarKind, v: FormValues): CalendarInput {
+  const timedEvent = kind === "event" && !v.allDay;
   return {
     kind,
     title: v.title,
     date: v.date,
     time: kind === "event" && v.allDay ? null : v.time || null,
+    end_time: timedEvent && v.end ? v.end : null,
     remind_before: kind === "reminder" || v.remind === "" ? null : Number(v.remind),
     repeat: v.repeat || null,
   };
+}
+
+/** An event with no end is taken to last this long when looking for clashes, in minutes. */
+const USUAL_LENGTH = 60;
+
+function minutesOf(time: string | null | undefined): number | null {
+  if (!time) return null;
+  const [h, m] = time.split(":").map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+}
+
+/** "12:30–13:30", or just "12:30". */
+export function timeRange(time: string, end: string | null): string {
+  return end ? `${time}–${end}` : time;
+}
+
+/** The other timed events on the day that overlap the times in `v`. `self` (the item being
+ * changed) is left out. */
+export function clashes(v: FormValues, dayItems: CalendarItem[], self: number | null): CalendarItem[] {
+  const start = minutesOf(v.time);
+  if (start === null) return [];
+  const end = minutesOf(v.end) ?? start + USUAL_LENGTH;
+  return dayItems.filter((i) => {
+    const s = minutesOf(i.time);
+    if (i.kind !== "event" || i.id === self || s === null) return false;
+    const e = minutesOf(i.end_time) ?? s + USUAL_LENGTH;
+    return s < end && start < e;
+  });
+}
+
+/** "Overlaps “Team lunch” (12:30–13:30)." */
+export function clashText(found: CalendarItem[]): string | null {
+  if (found.length === 0) return null;
+  const names = found.map((i) => `“${i.title}” (${timeRange(i.time ?? "", i.end_time)})`);
+  return `Overlaps ${names.join(" and ")}.`;
+}
+
+/** The events on `date`, for spotting clashes; none while there is no date. */
+function useDayEvents(date: string | null): CalendarItem[] {
+  const [items, setItems] = useState<CalendarItem[]>([]);
+  useEffect(() => {
+    if (!date) {
+      setItems([]);
+      return;
+    }
+    let live = true;
+    Promise.resolve(calendarBetween(date, date))
+      .then((found) => live && setItems(found ?? []))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [date]);
+  return items;
 }
 
 /**
@@ -110,18 +171,32 @@ export function ItemForm(props: {
   kind: CalendarKind;
   initial: FormValues;
   id: number | null;
+  /** Changing one day of a repeating event: that day, "YYYY-MM-DD". The user picks whether
+   * the change is for that day or every time. */
+  occurrence?: string;
   /** Said above the fields, such as that the note could not be read. */
   hint?: string | null;
   onDone: (saved: CalendarItem | null) => void;
 }) {
-  const { kind, initial, id, hint, onDone } = props;
-  const [v, setV] = useState(initial);
+  const { kind, initial, id, occurrence, hint, onDone } = props;
+  // One day of a series starts as that day on its own; "every time" goes back to the series.
+  const [scope, setScope] = useState<"one" | "all">("one");
+  const [v, setV] = useState(() => (occurrence ? { ...initial, date: occurrence, repeat: "" as const } : initial));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (change: Partial<FormValues>) => setV((cur) => ({ ...cur, ...change }));
   const noun = kind === "event" ? "event" : "reminder";
   const heading = id === null ? `New ${noun}` : `Change ${noun}`;
   const idFor = (field: string) => `item-${field}`;
+  const justOne = occurrence !== undefined && scope === "one";
+  const dayEvents = useDayEvents(kind === "event" && v.date ? v.date : null);
+  const clash = kind === "event" && !v.allDay ? clashText(clashes(v, dayEvents, id)) : null;
+
+  function changeScope(next: "one" | "all") {
+    setScope(next);
+    if (occurrence === undefined) return;
+    set(next === "one" ? { date: occurrence, repeat: "" } : { date: initial.date, repeat: initial.repeat });
+  }
 
   // The two lists of reminders mean different things ("0" is the start, or 9:00 on the
   // day), so switching starts again from the usual choice.
@@ -134,7 +209,12 @@ export function ItemForm(props: {
     setSaving(true);
     setError(null);
     try {
-      onDone(await calendarSave(id, inputFrom(kind, v)));
+      const input = inputFrom(kind, v);
+      const saved =
+        justOne && id !== null && occurrence !== undefined
+          ? await calendarChangeDay(id, occurrence, input)
+          : await calendarSave(id, input);
+      onDone(saved);
     } catch (err) {
       setError(String(err));
       setSaving(false);
@@ -153,6 +233,19 @@ export function ItemForm(props: {
     <form className="item-form" aria-label={heading} onSubmit={(e) => void save(e)} onKeyDown={onKeyDown}>
       <h3 className="item-form-title">{heading}</h3>
       {hint && <p className="item-form-hint">{hint}</p>}
+      {occurrence !== undefined && (
+        <fieldset className="item-scope">
+          <legend className="visually-hidden">Change which days</legend>
+          <label className="item-check">
+            <input type="radio" name="item-scope" checked={scope === "one"} onChange={() => changeScope("one")} />
+            Only {longDate(fromIsoDate(occurrence))}
+          </label>
+          <label className="item-check">
+            <input type="radio" name="item-scope" checked={scope === "all"} onChange={() => changeScope("all")} />
+            Every time
+          </label>
+        </fieldset>
+      )}
       <label className="item-field item-field--wide" htmlFor={idFor("title")}>
         <span>{kind === "event" ? "What" : "Remind me to"}</span>
         <input
@@ -172,8 +265,14 @@ export function ItemForm(props: {
         </label>
         {timed && (
           <label className="item-field" htmlFor={idFor("time")}>
-            <span>Time</span>
+            <span>{kind === "event" ? "Starts at" : "Time"}</span>
             <input id={idFor("time")} type="time" value={v.time} required onChange={(e) => set({ time: e.target.value })} />
+          </label>
+        )}
+        {kind === "event" && timed && (
+          <label className="item-field" htmlFor={idFor("end")}>
+            <span>Ends at</span>
+            <input id={idFor("end")} type="time" value={v.end} onChange={(e) => set({ end: e.target.value })} />
           </label>
         )}
         {kind === "event" && (
@@ -183,7 +282,13 @@ export function ItemForm(props: {
           </label>
         )}
       </div>
+      {clash && (
+        <p className="item-form-hint" role="status">
+          {clash}
+        </p>
+      )}
       <div className="item-fields">
+        {!justOne && (
         <label className="item-field item-field--grow" htmlFor={idFor("repeat")}>
           <span>Repeats</span>
           <select
@@ -198,6 +303,7 @@ export function ItemForm(props: {
             ))}
           </select>
         </label>
+        )}
         {kind === "event" && (
           <label className="item-field item-field--grow" htmlFor={idFor("remind")}>
             <span>Reminder</span>
@@ -248,7 +354,7 @@ export async function readNote(kind: CalendarKind, note: string, now: Date): Pro
   try {
     draft = await calendarUnderstand(kind, note, todayFor(now));
   } catch {
-    draft = { title: note, date: null, time: null, repeat: null, understood: false };
+    draft = { title: note, date: null, time: null, end_time: null, repeat: null, understood: false };
   }
   return { values: valuesFromDraft(kind, draft, now), hint: hintFor(draft) };
 }

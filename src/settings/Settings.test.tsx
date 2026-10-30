@@ -22,6 +22,11 @@ const baseSettings: Settings = {
   first_run_done: true,
   liquid_glass: true,
   dictionary_enabled: true,
+  calendar_in_chat: true,
+  quiet_hours: false,
+  quiet_from: "22:00",
+  quiet_to: "07:00",
+  wait_for_full_screen: true,
 };
 
 let progressCb: ((p: PullProgress) => void) | undefined;
@@ -201,6 +206,27 @@ describe("Settings", () => {
     await user.click(dictionary);
     expect(ipc.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ dictionary_enabled: false }));
     expect(dictionary).not.toBeChecked();
+  });
+
+  it("sets how the calendar answers questions and when reminders wait", async () => {
+    const user = userEvent.setup();
+    await renderSettings();
+    const plans = screen.getByRole("switch", { name: "Answer questions about my plans in the chat" });
+    expect(plans).toBeChecked();
+    expect(plans).toHaveAccessibleDescription(/go to the AI you picked above/);
+    await user.click(plans);
+    expect(ipc.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ calendar_in_chat: false }));
+
+    expect(screen.queryByLabelText("From")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("switch", { name: /Quiet hours/ }));
+    expect(ipc.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ quiet_hours: true }));
+    expect(screen.getByLabelText("From")).toHaveValue("22:00");
+    expect(screen.getByLabelText("to")).toHaveValue("07:00");
+
+    const fullScreen = screen.getByRole("switch", { name: /Wait while an app is full screen/ });
+    expect(fullScreen).toBeChecked();
+    await user.click(fullScreen);
+    expect(ipc.updateSettings).toHaveBeenCalledWith(expect.objectContaining({ wait_for_full_screen: false }));
   });
 
   it("saves a new chat shortcut", async () => {

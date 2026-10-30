@@ -55,11 +55,15 @@ your own API key.
 - **Calendar and reminders.** Type "dentist tomorrow at 3pm" in the Calendar tab, "remind
   me to submit the lab report on Friday" in Reminders, or just tell mouce in the chat
   ("remind me to call mum every Saturday at 6pm"). The AI fills in a short form for you to
-  check, and nothing is saved until you press Save. Events and reminders can repeat every
-  day, weekday, week, month or year. When something is due, a small card opens beside
-  mouce and mouce glows, with no sound: snooze it for 10 minutes, an hour or until
-  tomorrow, mark it done, or click it to open it. Home shows what's coming up this week.
-  Without an AI, you fill in the form yourself.
+  check, and nothing is saved until you press Save. Events can have an end time, and the
+  form warns when one clashes with another. Events and reminders can repeat every day,
+  weekday, week, month or year, and one day of a repeating event can be changed or
+  removed on its own. When something is due, a small card opens beside mouce and mouce
+  glows, with no sound: snooze it for 10 minutes, an hour or until tomorrow, mark it done,
+  or click it to open it. Reminders wait during your quiet hours and while an app is full
+  screen. Ask the chat "what's on tomorrow?" or "am I free on Friday?" and it answers from
+  your calendar (you can turn this off). Home shows what's coming up this week. Without an
+  AI, you fill in the form yourself.
 - **Shows what it's doing.** It sways gently when idle, moves faster while thinking, dims and
   pulses while looking, and glows when something needs your attention.
 - **Your choice of AI.** Run a local model on your own machine, or bring a key for OpenAI,

@@ -23,6 +23,11 @@ const baseSettings: Settings = {
   first_run_done: true,
   liquid_glass: true,
   dictionary_enabled: true,
+  calendar_in_chat: true,
+  quiet_hours: false,
+  quiet_from: "22:00",
+  quiet_to: "07:00",
+  wait_for_full_screen: true,
 };
 
 let tabCb: ((tab: HomeTabId) => void) | undefined;
@@ -253,7 +258,7 @@ describe("HomeWindow", () => {
       const today = new Date();
       const iso = (d: Date) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const base = { start_date: iso(today), remind_before: null, repeat: null, alert_at: null, done: false };
+      const base = { start_date: iso(today), end_time: null, remind_before: null, repeat: null, alert_at: null, done: false };
       vi.mocked(ipc.calendarBetween).mockImplementation(async (from, to) =>
         from === to
           ? []

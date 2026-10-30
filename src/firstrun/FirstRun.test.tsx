@@ -22,6 +22,11 @@ const baseSettings: Settings = {
   first_run_done: false,
   liquid_glass: true,
   dictionary_enabled: true,
+  calendar_in_chat: true,
+  quiet_hours: false,
+  quiet_from: "22:00",
+  quiet_to: "07:00",
+  wait_for_full_screen: true,
 };
 
 let progressCb: ((p: PullProgress) => void) | undefined;

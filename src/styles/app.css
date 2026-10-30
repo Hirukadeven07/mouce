@@ -423,6 +423,21 @@ html.page-window .item-field :where(input, select) {
   font-size: 13px;
 }
 
+.item-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.quiet-times {
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 13px;
+}
+
 /* ---- switch ---- */
 
 .switch {

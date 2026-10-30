@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calendarIntent } from "./calendarIntent";
+import { calendarIntent, plansQuestion } from "./calendarIntent";
 
 describe("calendarIntent", () => {
   it("spots a reminder", () => {
@@ -39,6 +39,29 @@ describe("calendarIntent", () => {
       "",
     ]) {
       expect(calendarIntent(text), text).toBeNull();
+    }
+  });
+});
+
+describe("plansQuestion", () => {
+  it("spots questions about the user's plans", () => {
+    for (const text of [
+      "what's on tomorrow?",
+      "What do I have on Friday",
+      "am I free on Saturday afternoon?",
+      "Do I have anything this weekend",
+      "when is my dentist appointment?",
+      "what does my week look like",
+      "show me my calendar",
+      "what's coming up?",
+    ]) {
+      expect(plansQuestion(text), text).toBe(true);
+    }
+  });
+
+  it("leaves other questions alone", () => {
+    for (const text of ["What's on my screen?", "what is a calendar", "how do loops work", "hi"]) {
+      expect(plansQuestion(text), text).toBe(false);
     }
   });
 });

@@ -256,6 +256,8 @@ pub fn run() -> Result<(), String> {
             commands::calendar_delete,
             commands::calendar_set_done,
             commands::calendar_clear_done,
+            commands::calendar_skip_day,
+            commands::calendar_change_day,
             commands::calendar_understand,
             commands::alerts_current,
             commands::alerts_fit,

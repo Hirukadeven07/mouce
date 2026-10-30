@@ -12,6 +12,15 @@ open, run or change anything on their computer, so never offer to. When somethin
 doing, tell them how to do it themselves. Keep answers short and clear, in plain text \
 (short lists with \"-\" are fine).";
 
+/// Goes before the user's plans when they ask about them.
+pub const PLANS_PROMPT: &str = "The user asked about their plans. Below is what is in \
+their mouce calendar: the events coming up and the reminders still to do, in their own \
+words. Answer from this list only, in a sentence or two of plain speech (\"On Tuesday you \
+have Gym from 07:00 to 08:00.\"), not by copying its lines. Reminders count as plans too: \
+mention any due in the time asked about. If something is not in it, say \
+it is not in their calendar. You cannot add, change or remove anything: to add something \
+they can type \"remind me to...\" in this chat or use the Calendar tab.";
+
 pub const MAX_TOKENS: u32 = 1024;
 /// The question used when the user shares their screen without typing anything.
 pub const LOOK_QUESTION: &str = "What's on my screen?";
@@ -40,6 +49,9 @@ pub struct Turn {
     /// The user circled part of their screen for this message.
     #[serde(default)]
     pub circled: bool,
+    /// The user's plans from the calendar went with this message.
+    #[serde(default)]
+    pub calendar: bool,
 }
 
 /// A circled part of the screen waiting to be asked about: the image for the AI and a
@@ -56,11 +68,14 @@ pub struct Snip {
 pub struct Conversation {
     turns: Vec<Turn>,
     screen: Option<(usize, ImageInput)>,
+    /// The latest plans asked about, with the message they went with. Follow-up questions
+    /// still see them while that message is among the ones sent.
+    plans: Option<(usize, String)>,
 }
 
 impl Conversation {
     pub fn from_turns(turns: Vec<Turn>) -> Conversation {
-        Conversation { turns, screen: None }
+        Conversation { turns, screen: None, plans: None }
     }
 
     pub fn turns(&self) -> &[Turn] {
@@ -72,17 +87,47 @@ impl Conversation {
         if let Some(image) = screen {
             self.screen = Some((self.turns.len(), image));
         }
-        self.turns.push(Turn { role: TurnRole::User, text, looked, circled: false });
+        self.turns.push(Turn {
+            role: TurnRole::User,
+            text,
+            looked,
+            circled: false,
+            calendar: false,
+        });
+    }
+
+    /// Adds a question about the user's plans, with `plans` from the calendar.
+    pub fn push_user_with_plans(&mut self, text: String, plans: String) {
+        self.plans = Some((self.turns.len(), plans));
+        self.turns.push(Turn {
+            role: TurnRole::User,
+            text,
+            looked: false,
+            circled: false,
+            calendar: true,
+        });
     }
 
     /// Adds a question about a circled part of the screen.
     pub fn push_user_circled(&mut self, text: String, image: ImageInput) {
         self.screen = Some((self.turns.len(), image));
-        self.turns.push(Turn { role: TurnRole::User, text, looked: false, circled: true });
+        self.turns.push(Turn {
+            role: TurnRole::User,
+            text,
+            looked: false,
+            circled: true,
+            calendar: false,
+        });
     }
 
     pub fn push_assistant(&mut self, text: String) {
-        self.turns.push(Turn { role: TurnRole::Assistant, text, looked: false, circled: false });
+        self.turns.push(Turn {
+            role: TurnRole::Assistant,
+            text,
+            looked: false,
+            circled: false,
+            calendar: false,
+        });
     }
 
     /// Takes back the last question when it got no answer, so it can be asked again.
@@ -92,12 +137,16 @@ impl Conversation {
             if self.screen.as_ref().is_some_and(|(i, _)| *i == self.turns.len()) {
                 self.screen = None;
             }
+            if self.plans.as_ref().is_some_and(|(i, _)| *i == self.turns.len()) {
+                self.plans = None;
+            }
         }
     }
 
     pub fn clear(&mut self) {
         self.turns.clear();
         self.screen = None;
+        self.plans = None;
     }
 
     /// The request for the latest messages. It always starts with a user message, as
@@ -122,12 +171,17 @@ impl Conversation {
                 },
             })
             .collect();
-        ChatRequest {
-            model,
-            system: Some(SYSTEM_PROMPT.to_string()),
-            messages,
-            max_tokens: MAX_TOKENS,
-        }
+        let system = match &self.plans {
+            Some((i, plans)) if *i >= start => format!(
+                "{SYSTEM_PROMPT}
+
+{PLANS_PROMPT}
+
+{plans}"
+            ),
+            _ => SYSTEM_PROMPT.to_string(),
+        };
+        ChatRequest { model, system: Some(system), messages, max_tokens: MAX_TOKENS }
     }
 }
 
@@ -295,5 +349,51 @@ mod tests {
         let (_d, s) = store();
         s.set_kv(HISTORY_KEY, "not json").unwrap();
         assert!(load_history(&s).is_empty());
+    }
+
+    #[test]
+    fn plans_go_with_their_question_and_its_follow_ups_only() {
+        let mut c = Conversation::default();
+        c.push_user("hi".into(), None);
+        c.push_assistant("hello".into());
+        assert_eq!(c.request("m".into()).system.as_deref(), Some(SYSTEM_PROMPT));
+        c.push_user_with_plans("what's on tomorrow?".into(), "- Dentist".into());
+        let system = c.request("m".into()).system.unwrap();
+        assert!(system.starts_with(SYSTEM_PROMPT));
+        assert!(system.contains(PLANS_PROMPT) && system.ends_with("- Dentist"));
+        assert!(c.turns()[2].calendar && !c.turns()[0].calendar);
+        c.push_assistant("The dentist.".into());
+        c.push_user("and after that?".into(), None);
+        assert!(c.request("m".into()).system.unwrap().ends_with("- Dentist"), "a follow-up");
+        for i in 0..15 {
+            c.push_assistant(format!("a{i}"));
+            c.push_user(format!("q{i}"), None);
+        }
+        assert_eq!(c.request("m".into()).system.as_deref(), Some(SYSTEM_PROMPT), "scrolled out");
+    }
+
+    #[test]
+    fn unanswered_plans_and_a_new_chat_are_forgotten() {
+        let mut c = Conversation::default();
+        c.push_user_with_plans("am I free?".into(), "- Gym".into());
+        c.drop_unanswered();
+        c.push_user("hi".into(), None);
+        assert_eq!(c.request("m".into()).system.as_deref(), Some(SYSTEM_PROMPT));
+        c.push_user_with_plans("am I free?".into(), "- Gym".into());
+        c.clear();
+        c.push_user("hi".into(), None);
+        assert_eq!(c.request("m".into()).system.as_deref(), Some(SYSTEM_PROMPT));
+    }
+
+    #[test]
+    fn saved_plans_are_not_kept_with_the_history() {
+        let (_d, s) = store();
+        let mut c = Conversation::default();
+        c.push_user_with_plans("what's on?".into(), "- Secret plan".into());
+        c.push_assistant("Lunch.".into());
+        save_history(&s, c.turns()).unwrap();
+        let raw = s.get_kv(HISTORY_KEY).unwrap().unwrap();
+        assert!(!raw.contains("Secret plan"));
+        assert!(load_history(&s)[0].calendar);
     }
 }

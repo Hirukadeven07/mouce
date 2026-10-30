@@ -12,6 +12,8 @@ export interface OpenForm {
   values: FormValues;
   id: number | null;
   hint: string | null;
+  /** Changing one day of a repeating event: that day. */
+  occurrence?: string;
 }
 
 /** A month you can page through, with what is on each day and a box to add more. */
@@ -56,7 +58,14 @@ export function CalendarTab(props: { today: Date }) {
         </div>
       </div>
       {form ? (
-        <ItemForm kind="event" initial={form.values} id={form.id} hint={form.hint} onDone={saved} />
+        <ItemForm
+          kind="event"
+          initial={form.values}
+          id={form.id}
+          occurrence={form.occurrence}
+          hint={form.hint}
+          onDone={saved}
+        />
       ) : (
         <QuickAdd
           kind="event"
@@ -82,7 +91,14 @@ export function CalendarTab(props: { today: Date }) {
             now={today}
             empty="Nothing planned."
             label={`Plans for ${longDate(day)}`}
-            onEdit={(item) => setForm({ values: valuesFromItem(item), id: item.id, hint: null })}
+            onEdit={(item) =>
+              setForm({
+                values: valuesFromItem(item),
+                id: item.id,
+                hint: null,
+                occurrence: item.repeat ? item.date : undefined,
+              })
+            }
           />
         </div>
       </div>
