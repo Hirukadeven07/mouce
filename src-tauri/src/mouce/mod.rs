@@ -421,11 +421,13 @@ pub fn screen_area(app: &AppHandle) -> Option<Rect> {
 }
 
 /// The home window tabs Rust can ask for. The webview has more tabs; these are the ones
-/// the tray and a second launch open directly.
+/// the tray, a second launch and the reminder card open directly.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HomeTab {
     Home,
     Chat,
+    Calendar,
+    Reminders,
     Settings,
 }
 
@@ -434,6 +436,8 @@ impl HomeTab {
         match self {
             HomeTab::Home => "home",
             HomeTab::Chat => "chat",
+            HomeTab::Calendar => "calendar",
+            HomeTab::Reminders => "reminders",
             HomeTab::Settings => "settings",
         }
     }
@@ -488,6 +492,8 @@ mod tests {
     fn home_tabs_have_the_names_the_webview_expects() {
         assert_eq!(HomeTab::Home.as_str(), "home");
         assert_eq!(HomeTab::Chat.as_str(), "chat");
+        assert_eq!(HomeTab::Calendar.as_str(), "calendar");
+        assert_eq!(HomeTab::Reminders.as_str(), "reminders");
         assert_eq!(HomeTab::Settings.as_str(), "settings");
     }
 

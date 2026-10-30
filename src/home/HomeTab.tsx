@@ -1,7 +1,9 @@
 import type { HomeTabId, Settings } from "../lib/types";
 import { PROVIDERS } from "../settings/AiSettings";
-import { monthTitle } from "./dates";
+import { addDays, gridRange, isoDate, monthTitle } from "./dates";
+import { ItemList } from "./ItemList";
 import { MonthView } from "./MonthView";
+import { byDate, useCalendarRange, useReminders } from "./useCalendar";
 import { activeModel, useAiStatus } from "./useAiStatus";
 
 function providerPill(settings: Settings): string {
@@ -34,7 +36,13 @@ function AiCard(props: { settings: Settings; onChange: () => void }) {
   );
 }
 
-/** The dashboard: the AI in use, this month, today's events and open reminders. */
+/** How many reminders the dashboard lists. */
+const SHOWN_REMINDERS = 3;
+/** How many days "Coming up" looks ahead, today included, and how many events it lists. */
+const COMING_DAYS = 7;
+const SHOWN_COMING = 5;
+
+/** The dashboard: the AI in use, this month, the week's events and open reminders. */
 export function HomeTab(props: {
   settings: Settings | null;
   today: Date;
@@ -43,6 +51,14 @@ export function HomeTab(props: {
   const { settings, today, onNavigate } = props;
   const year = today.getFullYear();
   const month = today.getMonth();
+  const { from, to } = gridRange(year, month, today);
+  const days = byDate(useCalendarRange(from, to));
+  const reminders = useReminders();
+  const open = reminders && reminders.filter((r) => !r.done);
+  const start = isoDate(today);
+  // Reminders have their own card, so this one is the events.
+  const coming = useCalendarRange(start, addDays(start, COMING_DAYS - 1));
+  const events = coming && coming.filter((i) => i.kind === "event");
   return (
     <div className="home-dash">
       {settings ? (
@@ -62,16 +78,27 @@ export function HomeTab(props: {
               Open calendar
             </button>
           </div>
-          <MonthView year={year} month={month} today={today} />
+          <MonthView year={year} month={month} today={today} marked={new Set(days.keys())} />
         </section>
         <div className="home-stack">
-          <section className="card" aria-labelledby="today-card-title">
+          <section className="card" aria-labelledby="coming-card-title">
             <div className="card-head">
-              <h2 id="today-card-title" className="headline">
-                Today
+              <h2 id="coming-card-title" className="headline">
+                Coming up
               </h2>
+              {events && events.length > SHOWN_COMING && (
+                <button type="button" className="link" onClick={() => onNavigate("calendar")}>
+                  {events.length - SHOWN_COMING} more
+                </button>
+              )}
             </div>
-            <p className="empty">Nothing planned today.</p>
+            <ItemList
+              items={events && events.slice(0, SHOWN_COMING)}
+              now={today}
+              withDay
+              empty="Nothing planned this week."
+              label="Coming up"
+            />
           </section>
           <section className="card" aria-labelledby="reminders-card-title">
             <div className="card-head">
@@ -82,7 +109,13 @@ export function HomeTab(props: {
                 See all
               </button>
             </div>
-            <p className="empty">No reminders yet.</p>
+            <ItemList
+              items={open && open.slice(0, SHOWN_REMINDERS)}
+              now={today}
+              withDay
+              empty={reminders?.length ? "Nothing left to do." : "No reminders yet."}
+              label="Reminders"
+            />
           </section>
         </div>
       </div>

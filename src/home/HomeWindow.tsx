@@ -13,10 +13,11 @@ import type { HomeTabId } from "../lib/types";
 import { Settings } from "../settings/Settings";
 import { useSettings } from "../settings/useSettings";
 import { Icon, type IconName } from "../ui/Icon";
-import { CalendarTab, RemindersTab } from "./CalendarTab";
+import { CalendarTab } from "./CalendarTab";
 import { Customize } from "./Customize";
 import { greeting, longDate } from "./dates";
 import { HomeTab } from "./HomeTab";
+import { RemindersTab } from "./RemindersTab";
 
 const TABS: Array<{ id: HomeTabId; label: string; icon: IconName }> = [
   { id: "home", label: "Home", icon: "home" },
@@ -206,7 +207,7 @@ export function HomeWindow() {
           />
         )}
         {tab === "calendar" && <CalendarTab today={now} />}
-        {tab === "reminders" && <RemindersTab />}
+        {tab === "reminders" && <RemindersTab today={now} />}
         {tab === "customize" && <Customize />}
         {tab === "settings" && <Settings />}
       </main>

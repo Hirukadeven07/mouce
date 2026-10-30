@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Settings, MouceState } from "../lib/types";
+import type { CalendarItem, Settings, MouceState } from "../lib/types";
 
 vi.mock("../lib/ipc");
 
@@ -45,6 +45,7 @@ describe("Mouce", () => {
 describe("MouceWindow", () => {
   let stateCb: ((s: MouceState) => void) | undefined;
   let settingsCb: ((s: Settings) => void) | undefined;
+  let alertsCb: ((due: CalendarItem[]) => void) | undefined;
   const unlistenState = vi.fn();
   const unlistenSettings = vi.fn();
 
@@ -63,6 +64,12 @@ describe("MouceWindow", () => {
       settingsCb = cb;
       return Promise.resolve(unlistenSettings);
     });
+    alertsCb = undefined;
+    vi.mocked(ipc.onAlerts).mockImplementation(async (cb) => {
+      alertsCb = cb;
+      return () => {};
+    });
+    vi.mocked(ipc.alertsCurrent).mockResolvedValue([]);
   });
 
   async function mount() {
@@ -160,6 +167,52 @@ describe("MouceWindow", () => {
     expect(container.querySelector("img")).toHaveClass("mouce--idle");
     act(() => stateCb!("thinking"));
     expect(container.querySelector("img")).toHaveClass("mouce--thinking");
+  });
+
+  it("glows while a reminder waits, unless it is busy", async () => {
+    const reminder: CalendarItem = {
+      id: 1,
+      kind: "reminder",
+      title: "Call mum",
+      date: "2026-10-30",
+      start_date: "2026-10-30",
+      time: "18:00",
+      remind_before: null,
+      repeat: null,
+      alert_at: 1,
+      done: false,
+    };
+    const { container } = await mount();
+    await waitFor(() => expect(alertsCb).toBeDefined());
+    const img = () => container.querySelector("img");
+    act(() => alertsCb!([reminder]));
+    expect(img()).toHaveClass("mouce--reminder");
+    expect(screen.getByRole("button", { name: /a reminder is waiting/ })).toBeInTheDocument();
+    act(() => stateCb!("thinking"));
+    expect(img()).toHaveClass("mouce--thinking");
+    act(() => stateCb!("idle"));
+    expect(img()).toHaveClass("mouce--reminder");
+    act(() => alertsCb!([]));
+    expect(img()).toHaveClass("mouce--idle");
+  });
+
+  it("glows for a reminder that was due before it loaded", async () => {
+    vi.mocked(ipc.alertsCurrent).mockResolvedValue([
+      {
+        id: 1,
+        kind: "event",
+        title: "Meeting",
+        date: "2026-10-30",
+        start_date: "2026-10-30",
+        time: "10:00",
+        remind_before: 10,
+        repeat: null,
+        alert_at: 1,
+        done: false,
+      },
+    ]);
+    const { container } = await mount();
+    await waitFor(() => expect(container.querySelector("img")).toHaveClass("mouce--reminder"));
   });
 
   it("settings-changed updates size and rotation", async () => {

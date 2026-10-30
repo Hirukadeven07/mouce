@@ -89,7 +89,8 @@ export function DictionaryCard() {
   useLayoutEffect(() => {
     const el = cardRef.current;
     if (!card || !el) return;
-    void dictionaryFit(card.id, el.scrollHeight + 2 * MARGIN).catch(() => {});
+    // `scrollHeight` rounds down; the extra pixel keeps a fraction from adding a scrollbar.
+    void dictionaryFit(card.id, el.scrollHeight + 2 * MARGIN + 1).catch(() => {});
   }, [card, more]);
 
   const missing = card?.missing ?? null;

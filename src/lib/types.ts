@@ -1,5 +1,5 @@
 // Mirrors the Rust types in src-tauri/src (settings.rs, ollama_setup.rs, chat.rs, commands.rs,
-// dictionary/).
+// dictionary/, calendar/).
 
 export type ProviderId = "ollama" | "openai" | "groq" | "gemini" | "anthropic";
 
@@ -106,3 +106,54 @@ export interface WordCard {
   explaining: "off" | "writing" | "done" | "failed";
   explanation: string;
 }
+
+export type CalendarKind = "event" | "reminder";
+
+/** How an event or reminder comes back (`calendar::date::Repeat`). */
+export type Repeat = "daily" | "weekdays" | "weekly" | "monthly" | "yearly";
+
+/** A saved event or reminder as shown on one day (`calendar::Item`). Dates and times are on
+ * the user's clock. */
+export interface CalendarItem {
+  id: number;
+  kind: CalendarKind;
+  title: string;
+  /** The day it is shown on, "YYYY-MM-DD": one day of a repeating event, or the day a
+   * repeating reminder is about now. */
+  date: string;
+  /** The day it was saved for, where a repeating one starts; changing it uses this. */
+  start_date: string;
+  /** "HH:MM", 24-hour; null is an all-day event. */
+  time: string | null;
+  /** Events only: minutes before the start to remind; null is no reminder. */
+  remind_before: number | null;
+  repeat: Repeat | null;
+  /** When it next reminds, in Unix milliseconds; null is never. */
+  alert_at: number | null;
+  /** Reminders only: it has been done. */
+  done: boolean;
+}
+
+/** An event or reminder to add or change (`calendar::Input`). Rust works out when it
+ * reminds. */
+export type CalendarInput = Pick<CalendarItem, "kind" | "title" | "date" | "time" | "remind_before" | "repeat">;
+
+/** What the AI read from a note, for the user to check (`calendar::understand::Draft`). */
+export interface CalendarDraft {
+  title: string;
+  date: string | null;
+  time: string | null;
+  repeat: Repeat | null;
+  /** False when the AI could not read the note: the title is the note itself. */
+  understood: boolean;
+}
+
+/** The day and time on the user's clock, for working out "tomorrow" and "next Friday". */
+export interface Today {
+  date: string;
+  time: string;
+  weekday: string;
+}
+
+/** What the user did with a reminder on the card beside the mouce. */
+export type AlertAction = "dismiss" | "snooze" | "snooze_hour" | "snooze_tomorrow" | "done";

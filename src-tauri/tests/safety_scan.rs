@@ -62,6 +62,11 @@ const FORBIDDEN_EVERYWHERE: &[&str] = &[
     "SetCursorPos",
     "ClipCursor",
     "BlockInput",
+    // The calendar only converts times; it never changes the computer's clock or time zone.
+    "SetSystemTime",
+    "SetLocalTime",
+    "SetTimeZoneInformation",
+    "SetDynamicTimeZoneInformation",
     // Dragging can hand data to another program.
     "DoDragDrop",
     // WinRT file access (the text recognition needs no files).
@@ -326,7 +331,7 @@ fn capabilities_grant_only_allowlist() {
 
     let mut granted = std::collections::BTreeSet::new();
     let expected_windows =
-        serde_json::json!(["mouce", "home", "firstrun", "chat", "circle", "dictionary"]);
+        serde_json::json!(["mouce", "home", "firstrun", "chat", "circle", "dictionary", "alerts"]);
 
     for path in &files {
         let name = path.display();
@@ -347,7 +352,7 @@ fn capabilities_grant_only_allowlist() {
         assert_eq!(
             value.get("windows"),
             Some(&expected_windows),
-            "{name}: capability windows must be exactly mouce, home, firstrun, chat, circle, dictionary"
+            "{name}: capability windows must be exactly mouce, home, firstrun, chat, circle, dictionary, alerts"
         );
         let perms = value
             .get("permissions")
@@ -408,6 +413,10 @@ fn tauri_conf_has_no_inline_capabilities() {
 /// - `Foundation`, `Globalization`, `Graphics_Imaging`, `Media_Ocr` and `Win32_System_WinRT`:
 ///   the text recognition built into Windows, reading a picture held in memory. None of them
 ///   opens files (the WinRT file APIs are forbidden above, and `Storage` is not enabled).
+///
+/// The calendar (`src/calendar/`) adds `Win32_System_Time`: turning a day and time on the
+/// user's clock into a moment and back, with the computer's own time zone rules. It only
+/// converts times; it cannot set the clock (that needs a privilege mouce never asks for).
 const WINDOWS_FEATURES: &[&str] = &[
     "Foundation",
     "Globalization",
@@ -417,6 +426,7 @@ const WINDOWS_FEATURES: &[&str] = &[
     "Win32_Graphics_Gdi",
     "Win32_System_Com",
     "Win32_System_Ole",
+    "Win32_System_Time",
     "Win32_System_WinRT",
     "Win32_UI_Accessibility",
     "Win32_UI_Input_KeyboardAndMouse",
