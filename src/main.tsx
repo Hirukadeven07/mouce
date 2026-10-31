@@ -11,6 +11,12 @@ async function pageWindow(): Promise<void> {
   await import("./styles/app.css");
 }
 
+/** The Aurora look (aurora.css), for the windows that have moved to it so far. */
+async function auroraPage(): Promise<void> {
+  document.documentElement.classList.add("aurora-page");
+  await import("./styles/aurora.css");
+}
+
 async function root(): Promise<React.ReactElement> {
   switch (windowLabel()) {
     case "mouce": {
@@ -21,7 +27,7 @@ async function root(): Promise<React.ReactElement> {
     }
     case "home": {
       await pageWindow();
-      // The home window is always dark, with its own palette (home.css).
+      await auroraPage();
       document.documentElement.classList.add("home-window-page");
       await import("./home/home.css");
       await import("./chat/chat.css");
@@ -30,6 +36,7 @@ async function root(): Promise<React.ReactElement> {
     }
     case "chat": {
       await pageWindow();
+      await auroraPage();
       await import("./chat/chat.css");
       const { ChatWindow } = await import("./chat/ChatWindow");
       return <ChatWindow />;
@@ -42,6 +49,7 @@ async function root(): Promise<React.ReactElement> {
     }
     case "dictionary": {
       await pageWindow();
+      await auroraPage();
       document.documentElement.classList.add("dictionary-window-page");
       await import("./dictionary/dictionary.css");
       const { DictionaryCard } = await import("./dictionary/DictionaryCard");

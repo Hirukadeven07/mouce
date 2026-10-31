@@ -19,18 +19,20 @@ import { Customize } from "./Customize";
 import { greeting, longDate } from "./dates";
 import { HomeTab } from "./HomeTab";
 import { RemindersTab } from "./RemindersTab";
+import { Shortcuts } from "./Shortcuts";
 
 const TABS: Array<{ id: HomeTabId; label: string; icon: IconName }> = [
   { id: "home", label: "Home", icon: "home" },
   { id: "chat", label: "Chat", icon: "chat" },
   { id: "calendar", label: "Calendar", icon: "calendar" },
   { id: "reminders", label: "Reminders", icon: "reminders" },
+  { id: "shortcuts", label: "Shortcuts", icon: "keyboard" },
   { id: "customize", label: "Customize", icon: "customize" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];
 
 /** Where the second group of tabs (how mouce looks and works) begins. */
-const SECOND_GROUP: HomeTabId = "customize";
+const SECOND_GROUP: HomeTabId = "shortcuts";
 
 function isTab(value: unknown): value is HomeTabId {
   return TABS.some((t) => t.id === value);
@@ -207,7 +209,6 @@ export function HomeWindow() {
             </div>
             {tab === "home" && (
               <button type="button" className="primary ask-button" onClick={() => void openChat().catch(() => {})}>
-                <Icon name="sparkle" size={16} />
                 Ask mouce
               </button>
             )}
@@ -226,6 +227,7 @@ export function HomeWindow() {
         )}
         {tab === "calendar" && <CalendarTab today={now} />}
         {tab === "reminders" && <RemindersTab today={now} />}
+        {tab === "shortcuts" && <Shortcuts onNavigate={setTab} />}
         {tab === "customize" && <Customize />}
         {tab === "settings" && <Settings />}
       </main>
