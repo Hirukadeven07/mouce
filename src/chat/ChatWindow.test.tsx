@@ -399,11 +399,11 @@ describe("ChatWindow with Circle to look up", () => {
     expect(ipc.circleStart).toHaveBeenCalled();
   });
 
-  it("the empty chat names the circle shortcut", async () => {
+  it("the Circle button names the circle shortcut, and the empty chat does not", async () => {
     render(<ChatWindow />);
-    expect(
-      await screen.findByText("Press Ctrl+Alt+O in any app to circle something."),
-    ).toBeInTheDocument();
+    const circle = screen.getByRole("button", { name: "Circle" });
+    await waitFor(() => expect(circle).toHaveAttribute("title", "Circle to look up (Ctrl+Alt+O)"));
+    expect(screen.queryByText(/to circle something/)).not.toBeInTheDocument();
   });
 
   it("a circled area arrives, is shown with where it goes, and is asked about", async () => {

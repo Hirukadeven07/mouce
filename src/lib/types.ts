@@ -46,7 +46,14 @@ export interface Settings {
 
 export type MouceState = "idle" | "thinking" | "looking" | "reminder";
 
-export type HomeTabId = "home" | "chat" | "calendar" | "reminders" | "customize" | "settings";
+export type HomeTabId =
+  | "home"
+  | "chat"
+  | "calendar"
+  | "reminders"
+  | "shortcuts"
+  | "customize"
+  | "settings";
 
 export type OllamaStatus =
   | { state: "notInstalled" }

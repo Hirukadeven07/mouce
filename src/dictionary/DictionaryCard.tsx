@@ -126,7 +126,7 @@ export function DictionaryCard() {
 
   return (
     <div className="dict">
-      <article className="dict-card" ref={cardRef} aria-labelledby="dict-word">
+      <article className="dict-card" key={card.id} ref={cardRef} aria-labelledby="dict-word">
         <header className="dict-header">
           <div className="dict-heading">
             <h1 id="dict-word" className="dict-word">
@@ -194,7 +194,7 @@ export function DictionaryCard() {
               {more ? "Fewer meanings" : `${hidden} more meaning${hidden === 1 ? "" : "s"}`}
             </button>
           )}
-          <button type="button" onClick={() => void dictionaryChat(card.id).catch(() => {})}>
+          <button type="button" className="ask-button" onClick={() => void dictionaryChat(card.id).catch(() => {})}>
             <Icon name="chat" size={16} />
             Chat about this
           </button>

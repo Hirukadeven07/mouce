@@ -113,12 +113,6 @@ html.page-window button.chat-avatar {
   margin-top: 12px;
 }
 
-.chat-empty-tip {
-  margin-top: 10px;
-  color: var(--label-2);
-  font-size: 12px;
-}
-
 .bubble-row {
   display: flex;
   flex-direction: column;
