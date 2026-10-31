@@ -99,7 +99,12 @@ function Bubble(props: { turn: ChatTurn; note?: string; writing?: boolean }) {
 
 /** The chat panel beside the mouce. */
 export function ChatWindow() {
-  return <ChatView mode="panel" />;
+  return (
+    <>
+      <div className="aurora aurora--panel" aria-hidden="true" />
+      <ChatView mode="panel" />
+    </>
+  );
 }
 
 /**
@@ -339,9 +344,6 @@ export function ChatView(props: {
               <Icon name="look" size={16} />
               {LOOK_QUESTION}
             </button>
-            {circleKeys && (
-              <p className="chat-empty-tip">Press {circleKeys} in any app to circle something.</p>
-            )}
           </div>
         )}
         {turns.map((t, i) => (

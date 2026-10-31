@@ -116,7 +116,7 @@ describe("HomeWindow", () => {
     it("opens on Home with every tab listed", async () => {
       render(<HomeWindow />);
       const tabs = screen.getAllByRole("tab").map((t) => t.textContent);
-      expect(tabs).toEqual(["Home", "Chat", "Calendar", "Reminders", "Customize", "Settings"]);
+      expect(tabs).toEqual(["Home", "Chat", "Calendar", "Reminders", "Shortcuts", "Customize", "Settings"]);
       expect(screen.getByRole("tab", { name: "Home" })).toHaveAttribute("aria-selected", "true");
       expect(await screen.findByText("Ready · runs on this laptop")).toBeInTheDocument();
     });

@@ -347,7 +347,9 @@ fn build_chat(app: &AppHandle) -> tauri::Result<()> {
             .always_on_top(true)
             .transparent(true)
             .center()
-            .visible(false);
+            .visible(false)
+            // The chat page is always dark, so its title bar is too.
+            .theme(Some(tauri::Theme::Dark));
     if let Some(effects) = glass_effects(glass_on(app)) {
         builder = builder.effects(effects);
     }
