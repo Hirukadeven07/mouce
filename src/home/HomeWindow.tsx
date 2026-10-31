@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import logoUrl from "../assets/mouce.png";
 import { ChatView } from "../chat/ChatWindow";
 import { closeChatPanel, initialHomeTab, onHomeTab, openChat } from "../lib/ipc";
 import type { HomeTabId } from "../lib/types";
@@ -142,58 +143,75 @@ export function HomeWindow() {
   const label = TABS.find((t) => t.id === tab)?.label ?? "";
 
   return (
-    <div className={"home" + (tab === "chat" ? " home--chat" : "")}>
+    <div className={"home" + (tab === "chat" ? " home--chat" : "")} data-tab={tab}>
+      <div className="aurora" aria-hidden="true" />
       <nav className="home-sidebar" aria-label="mouce">
-        <div className="home-nav glass" role="tablist" aria-orientation="vertical" ref={navRef}>
-          {box && (
-            <span
-              className={"nav-lens" + (glide ? "" : " nav-lens--still")}
-              aria-hidden="true"
-              style={{ width: box.w, height: box.h, transform: `translate(${box.x}px, ${box.y}px)` }}
-            />
+        <div className="home-rail">
+          <div className="home-brand" aria-hidden="true">
+            <img src={logoUrl} alt="" width={26} height={26} />
+            <span>mouce</span>
+          </div>
+          <div className="home-nav" role="tablist" aria-orientation="vertical" ref={navRef}>
+            {box && (
+              <span
+                className={"nav-lens" + (glide ? "" : " nav-lens--still")}
+                aria-hidden="true"
+                style={{ width: box.w, height: box.h, transform: `translate(${box.x}px, ${box.y}px)` }}
+              />
+            )}
+            {TABS.map((t) => (
+              <FragmentWithGap key={t.id} gap={t.id === SECOND_GROUP}>
+                <button
+                  ref={(el) => {
+                    tabRefs.current[t.id] = el;
+                  }}
+                  type="button"
+                  role="tab"
+                  id={`tab-${t.id}`}
+                  aria-selected={tab === t.id}
+                  aria-controls={`panel-${t.id}`}
+                  tabIndex={tab === t.id ? 0 : -1}
+                  className="nav-item"
+                  onClick={() => {
+                    setArrowed(false);
+                    setTab(t.id);
+                  }}
+                  onKeyDown={onTabKey}
+                >
+                  <Icon name={t.icon} />
+                  {t.label}
+                </button>
+              </FragmentWithGap>
+            ))}
+          </div>
+          {settings?.chat_hotkey && (
+            <p className="home-hint">
+              <span>Chat from any app</span>
+              <span className="home-keys">
+                {settings.chat_hotkey.split("+").map((key) => (
+                  <kbd key={key}>{key}</kbd>
+                ))}
+              </span>
+            </p>
           )}
-          {TABS.map((t) => (
-            <FragmentWithGap key={t.id} gap={t.id === SECOND_GROUP}>
-              <button
-                ref={(el) => {
-                  tabRefs.current[t.id] = el;
-                }}
-                type="button"
-                role="tab"
-                id={`tab-${t.id}`}
-                aria-selected={tab === t.id}
-                aria-controls={`panel-${t.id}`}
-                tabIndex={tab === t.id ? 0 : -1}
-                className="nav-item"
-                onClick={() => {
-                  setArrowed(false);
-                  setTab(t.id);
-                }}
-                onKeyDown={onTabKey}
-              >
-                <Icon name={t.icon} />
-                {t.label}
-              </button>
-            </FragmentWithGap>
-          ))}
         </div>
       </nav>
       <main className="home-main" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab !== "chat" && (
-        <header className="home-header">
-          <div>
-            <h1 className={tab === "home" ? "large-title" : "title"}>
-              {tab === "home" ? greeting(now) : label}
-            </h1>
-            {tab === "home" && <p className="subtitle">{longDate(now)}</p>}
-          </div>
-          {tab === "home" && (
-            <button type="button" className="primary" onClick={() => void openChat().catch(() => {})}>
-              <Icon name="sparkle" size={16} />
-              Ask mouce
-            </button>
-          )}
-        </header>
+          <header className="home-header" key={tab}>
+            <div className="home-heading">
+              <h1 className={tab === "home" ? "large-title" : "title"}>
+                {tab === "home" ? <Greeting text={greeting(now)} /> : label}
+              </h1>
+              {tab === "home" && <p className="subtitle">{longDate(now)}</p>}
+            </div>
+            {tab === "home" && (
+              <button type="button" className="primary ask-button" onClick={() => void openChat().catch(() => {})}>
+                <Icon name="sparkle" size={16} />
+                Ask mouce
+              </button>
+            )}
+          </header>
         )}
         {tab === "home" && <HomeTab settings={settings} today={now} onNavigate={setTab} />}
         {tab === "chat" && (
@@ -212,6 +230,17 @@ export function HomeWindow() {
         {tab === "settings" && <Settings />}
       </main>
     </div>
+  );
+}
+
+/** "Good *evening.*": the greeting's last word set in italics, as a headline would be. */
+function Greeting(props: { text: string }) {
+  const cut = props.text.lastIndexOf(" ");
+  return (
+    <>
+      {props.text.slice(0, cut + 1)}
+      <em>{props.text.slice(cut + 1)}.</em>
+    </>
   );
 }
 
