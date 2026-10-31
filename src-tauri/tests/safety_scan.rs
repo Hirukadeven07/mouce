@@ -310,29 +310,152 @@ fn opener_is_only_used_for_the_fixed_download_url() {
 const CAPABILITY_KEYS: &[&str] =
     &["$schema", "identifier", "description", "local", "windows", "permissions"];
 
+/// What each window may call: Tauri's core set, plus `allow-<command>` for each of our own
+/// commands it uses (see `build.rs`). A window that shows other apps' text (dictionary) or
+/// covers the screen (circle) gets nothing it does not need, so a fault in one of them
+/// cannot reach the API keys, the settings or the screen picture.
+const WINDOW_GRANTS: &[(&str, &[&str])] = &[
+    (
+        "mouce",
+        &["core:window:allow-start-dragging", "get_settings", "mouce_clicked", "alerts_current"],
+    ),
+    (
+        "home",
+        &[
+            "get_settings",
+            "update_settings",
+            "set_api_key",
+            "has_api_key",
+            "clear_api_key",
+            "list_models",
+            "test_provider",
+            "ollama_status",
+            "pull_ollama_model",
+            "open_ollama_download",
+            "get_autostart",
+            "set_autostart",
+            "chat_history",
+            "chat_send",
+            "chat_stop",
+            "chat_clear",
+            "open_chat",
+            "open_home",
+            "open_home_chat",
+            "close_chat_panel",
+            "chat_attachment",
+            "chat_discard_attachment",
+            "chat_take_draft",
+            "circle_start",
+            "calendar_between",
+            "calendar_reminders",
+            "calendar_save",
+            "calendar_delete",
+            "calendar_set_done",
+            "calendar_clear_done",
+            "calendar_skip_day",
+            "calendar_change_day",
+            "calendar_understand",
+        ],
+    ),
+    (
+        "chat",
+        &[
+            "get_settings",
+            "chat_history",
+            "chat_send",
+            "chat_stop",
+            "chat_clear",
+            "open_home",
+            "open_home_chat",
+            "chat_attachment",
+            "chat_discard_attachment",
+            "chat_take_draft",
+            "circle_start",
+            "calendar_between",
+            "calendar_save",
+            "calendar_change_day",
+            "calendar_understand",
+        ],
+    ),
+    ("circle", &["circle_frame", "circle_ready", "circle_finish", "circle_cancel"]),
+    (
+        "dictionary",
+        &[
+            "get_settings",
+            "dictionary_current",
+            "dictionary_fit",
+            "dictionary_close",
+            "dictionary_chat",
+        ],
+    ),
+    ("alerts", &["get_settings", "alerts_current", "alerts_fit", "alerts_act", "alerts_open"]),
+    (
+        "firstrun",
+        &[
+            "get_settings",
+            "update_settings",
+            "set_api_key",
+            "has_api_key",
+            "clear_api_key",
+            "list_models",
+            "test_provider",
+            "ollama_status",
+            "pull_ollama_model",
+            "open_ollama_download",
+            "set_autostart",
+            "finish_first_run",
+        ],
+    ),
+];
+
+/// The commands that touch keys, settings, the screen or saved data, and the only windows
+/// that may call each one. Checked on top of `WINDOW_GRANTS`, so widening one of these
+/// grants takes two deliberate edits.
+const SENSITIVE: &[(&str, &[&str])] = &[
+    ("set_api_key", &["home", "firstrun"]),
+    ("clear_api_key", &["home", "firstrun"]),
+    ("update_settings", &["home", "firstrun"]),
+    ("set_autostart", &["home", "firstrun"]),
+    ("pull_ollama_model", &["home", "firstrun"]),
+    ("circle_frame", &["circle"]),
+    ("circle_finish", &["circle"]),
+    ("chat_send", &["home", "chat"]),
+    ("chat_clear", &["home", "chat"]),
+    ("calendar_delete", &["home"]),
+    ("calendar_clear_done", &["home"]),
+];
+
+/// `allow-chat-send` for `chat_send`; core permissions stay as they are.
+fn permission_id(grant: &str) -> String {
+    if grant.contains(':') {
+        grant.to_string()
+    } else {
+        format!("allow-{}", grant.replace('_', "-"))
+    }
+}
+
 fn capability_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(dir).expect("read capabilities dir");
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
             capability_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "json" || e == "json5" || e == "toml") {
+        } else {
             out.push(path);
         }
     }
 }
 
+type Grants = std::collections::BTreeMap<String, std::collections::BTreeSet<String>>;
+
 #[test]
-fn capabilities_grant_only_allowlist() {
+fn each_window_is_granted_only_what_it_uses() {
     let dir = manifest_dir().join("capabilities");
     let mut files = Vec::new();
     capability_files(&dir, &mut files);
     assert!(!files.is_empty(), "no capability files found");
 
-    let mut granted = std::collections::BTreeSet::new();
-    let expected_windows =
-        serde_json::json!(["mouce", "home", "firstrun", "chat", "circle", "dictionary", "alerts"]);
-
+    let mut granted = Grants::new();
     for path in &files {
         let name = path.display();
         assert!(
@@ -349,35 +472,86 @@ fn capabilities_grant_only_allowlist() {
                  `platforms` change who may call the commands); allowed keys: {CAPABILITY_KEYS:?}"
             );
         }
-        assert_eq!(
-            value.get("windows"),
-            Some(&expected_windows),
-            "{name}: capability windows must be exactly mouce, home, firstrun, chat, circle, dictionary, alerts"
-        );
+        let windows = value.get("windows").and_then(|w| w.as_array()).expect("windows array");
+        assert_eq!(windows.len(), 1, "{name}: a capability covers exactly one window");
+        let window = windows[0].as_str().expect("window label").to_string();
+        assert!(!window.contains('*'), "{name}: no wildcard windows");
         let perms = value
             .get("permissions")
             .and_then(|p| p.as_array())
             .expect("capability has a permissions array");
+        let set = granted.entry(window).or_default();
         for perm in perms {
-            let id = match perm {
-                serde_json::Value::String(s) => s.clone(),
-                serde_json::Value::Object(o) => o
-                    .get("identifier")
-                    .and_then(|i| i.as_str())
-                    .expect("permission object has identifier")
-                    .to_string(),
-                other => panic!("unexpected permission entry: {other}"),
-            };
-            granted.insert(id);
+            let id = perm.as_str().unwrap_or_else(|| {
+                panic!(
+                    "{name}: permissions are plain names; scoped entries are not allowed: {perm}"
+                )
+            });
+            set.insert(id.to_string());
         }
     }
 
-    let expected: std::collections::BTreeSet<String> =
-        ["core:default", "core:window:allow-start-dragging"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-    assert_eq!(granted, expected, "capabilities must grant exactly the allowlist");
+    let expected: Grants = WINDOW_GRANTS
+        .iter()
+        .map(|(window, grants)| {
+            let mut set: std::collections::BTreeSet<String> =
+                grants.iter().map(|g| permission_id(g)).collect();
+            set.insert("core:default".to_string());
+            (window.to_string(), set)
+        })
+        .collect();
+    assert_eq!(
+        granted, expected,
+        "capabilities must grant exactly WINDOW_GRANTS, window by window"
+    );
+
+    for (command, allowed) in SENSITIVE {
+        let id = permission_id(command);
+        for (window, set) in &granted {
+            if set.contains(&id) {
+                assert!(
+                    allowed.contains(&window.as_str()),
+                    "{window} must not be granted {command}; only {allowed:?} may call it"
+                );
+            }
+        }
+    }
+}
+
+/// The names in the first `[ ... ]` list after `marker` in `text`.
+fn names_after(text: &str, marker: &str) -> Vec<String> {
+    let at = text.find(marker).unwrap_or_else(|| panic!("`{marker}` not found")) + marker.len();
+    let open = text[at..].find('[').expect("list opens") + at;
+    let close = text[open..].find(']').expect("list closes") + open;
+    text[open + 1..close]
+        .split(',')
+        .map(|n| n.trim().trim_matches('"').trim_start_matches("commands::").to_string())
+        .filter(|n| !n.is_empty())
+        .collect()
+}
+
+#[test]
+fn every_command_is_under_the_access_check() {
+    // A command missing from build.rs's list is refused in every window, and one listed but
+    // not registered is a stale grant; either way the two lists must match.
+    let root = manifest_dir();
+    let build = fs::read_to_string(root.join("build.rs")).expect("read build.rs");
+    let lib = fs::read_to_string(root.join("src/lib.rs")).expect("read lib.rs");
+    assert!(build.contains(".app_manifest("), "build.rs must hand COMMANDS to tauri-build");
+    let mut listed = names_after(&build, "const COMMANDS: &[&str] = &");
+    let mut registered = names_after(&lib, "generate_handler!");
+    listed.sort();
+    registered.sort();
+    assert_eq!(listed, registered, "build.rs COMMANDS and lib.rs generate_handler! differ");
+
+    for (window, grants) in WINDOW_GRANTS {
+        for grant in grants.iter().filter(|g| !g.contains(':')) {
+            assert!(
+                listed.iter().any(|c| c == grant),
+                "{window} is granted unknown command {grant}"
+            );
+        }
+    }
 }
 
 #[test]

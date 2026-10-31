@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "alerts",
+  "description": "The reminder card beside the mouce.",
+  "windows": [
+    "alerts"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-get-settings",
+    "allow-alerts-current",
+    "allow-alerts-fit",
+    "allow-alerts-act",
+    "allow-alerts-open"
+  ]
+}

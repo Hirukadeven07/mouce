@@ -30,6 +30,12 @@ const TEST_SYSTEM: &str = "You are a connection test.";
 const TEST_USER: &str = "Reply with exactly: ready";
 const TEST_MAX_TOKENS: u32 = 16;
 
+/// The longest question the chat accepts, far more than anyone types; it keeps a window
+/// from handing the AI (and the saved history) an endless text.
+pub const MAX_QUESTION_CHARS: usize = 20_000;
+/// The longest model name, Ollama address or shortcut a setting may hold.
+pub const MAX_SETTING_CHARS: usize = 200;
+
 fn lock(state: &AppState) -> MutexGuard<'_, Settings> {
     state.settings.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -100,6 +106,9 @@ pub fn update_settings_impl(
     next.first_run_done = current.first_run_done;
     next.chat_hotkey = next.chat_hotkey.trim().to_string();
     next.circle_hotkey = next.circle_hotkey.trim().to_string();
+    next.ollama_base_url = next.ollama_base_url.trim().to_string();
+    check_setting_lengths(&next)?;
+    check_ollama_address(&next.ollama_base_url)?;
     hotkey::check_distinct(&next.chat_hotkey, &next.circle_hotkey)?;
     let quiet_time = |t: &str| calendar::normal_time(t).ok_or("Pick a time for quiet hours");
     next.quiet_from = quiet_time(&next.quiet_from)?;
@@ -117,6 +126,35 @@ pub fn update_settings_impl(
     let size_changed = current.mouce_size != next.mouce_size;
     *current = next.clone();
     Ok((next, size_changed))
+}
+
+fn check_setting_lengths(s: &Settings) -> Result<(), String> {
+    let too_long = |t: &str| t.chars().count() > MAX_SETTING_CHARS;
+    if too_long(&s.chat_hotkey) || too_long(&s.circle_hotkey) {
+        return Err("That shortcut is too long".to_string());
+    }
+    if too_long(&s.ollama_base_url) {
+        return Err("That Ollama address is too long".to_string());
+    }
+    if s.models.values().any(|m| too_long(m)) {
+        return Err("That model name is too long".to_string());
+    }
+    Ok(())
+}
+
+/// Ollama runs on this computer, and the chat and screen pictures go to it, so its address
+/// must be `localhost` or `127.0.0.1` (blank means the default one).
+fn check_ollama_address(address: &str) -> Result<(), String> {
+    if address.is_empty() {
+        return Ok(());
+    }
+    let ok = url::Url::parse(address)
+        .is_ok_and(|u| matches!(u.scheme(), "http" | "https") && ai::net::is_loopback(&u));
+    if ok {
+        Ok(())
+    } else {
+        Err("Ollama's address must be on this computer, like http://localhost:11434".to_string())
+    }
 }
 
 /// Moves each shortcut that changed (`(old, new)`) to its new keys. If one cannot move, the
@@ -439,6 +477,9 @@ where
         "" if screen.is_some() => chat::LOOK_QUESTION.to_string(),
         "" if circled.snip.is_some() => chat::CIRCLE_QUESTION.to_string(),
         "" => return Err("Type a question first".to_string()),
+        t if t.chars().count() > MAX_QUESTION_CHARS => {
+            return Err(format!("Keep the question under {MAX_QUESTION_CHARS} characters"))
+        }
         t => t.to_string(),
     };
     let stop = Arc::new(Notify::new());
@@ -948,6 +989,9 @@ pub async fn pull_ollama_model_impl(
     let model = model.trim();
     if model.is_empty() {
         return Err("Choose a model to download".to_string());
+    }
+    if model.chars().count() > MAX_SETTING_CHARS {
+        return Err("That model name is too long".to_string());
     }
     let Some(_slot) = BusySlot::try_take(&state.pull_active) else {
         return Err("A download is already in progress".to_string());
@@ -1560,6 +1604,52 @@ mod tests {
         assert_eq!(err, "Type a question first");
         assert!(server.received_requests().await.unwrap().is_empty());
         assert!(!st.chat_active.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn an_endless_question_is_refused_before_any_request() {
+        let server = MockServer::start().await;
+        let (_d, st) = state_for(&server);
+        let long = "a".repeat(MAX_QUESTION_CHARS + 1);
+        let err = chat_send_impl(&st, &long, no_look(), &mut |_| {}).await.unwrap_err();
+        assert!(err.contains("Keep the question under"), "{err}");
+        assert!(server.received_requests().await.unwrap().is_empty());
+        assert!(lock_chat(&st).turns().is_empty());
+    }
+
+    #[test]
+    fn ollama_must_stay_on_this_computer() {
+        let (_d, st) = state(Settings::default());
+        for ok in ["", "http://localhost:11434", " http://127.0.0.1:9999 ", "https://localhost"] {
+            let next = Settings { ollama_base_url: ok.into(), ..Default::default() };
+            assert!(update_settings_impl(&st, next).is_ok(), "{ok:?} should be allowed");
+        }
+        for bad in [
+            "http://192.168.1.5:11434",
+            "https://evil.com",
+            "http://localhost.evil.com",
+            "file:///C:/x",
+            "localhost:11434",
+        ] {
+            let next = Settings { ollama_base_url: bad.into(), ..Default::default() };
+            let err = update_settings_impl(&st, next).unwrap_err();
+            assert!(err.contains("on this computer"), "{bad:?}: {err}");
+        }
+        assert_eq!(lock(&st).ollama_base_url, "https://localhost", "refusals saved nothing");
+    }
+
+    #[test]
+    fn overlong_settings_are_refused() {
+        let (_d, st) = state(Settings::default());
+        let long = "x".repeat(MAX_SETTING_CHARS + 1);
+        let hotkey = Settings { chat_hotkey: long.clone(), ..Default::default() };
+        assert!(update_settings_impl(&st, hotkey).unwrap_err().contains("shortcut"));
+        let mut models = Settings::default();
+        models.models.insert(ProviderId::OpenAi, long.clone());
+        assert!(update_settings_impl(&st, models).unwrap_err().contains("model name"));
+        let address =
+            Settings { ollama_base_url: format!("http://localhost/{long}"), ..Default::default() };
+        assert!(update_settings_impl(&st, address).unwrap_err().contains("Ollama address"));
     }
 
     #[tokio::test]

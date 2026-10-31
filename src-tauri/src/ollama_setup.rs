@@ -59,7 +59,7 @@ async fn status_with_timeout(base_url: &str, exe_hint: &Path, limit: Duration) -
 
 async fn fetch_models(base_url: &str) -> Result<Vec<String>, AiError> {
     let url = endpoint(base_url, "/api/tags")?;
-    let resp = net::send(net::client().get(url.clone()), &url).await?;
+    let resp = net::send(net::client_for(url.as_str()).get(url.clone()), &url).await?;
     let text = resp.text().await.map_err(|e| AiError::Parse(e.without_url().to_string()))?;
     let v: Value = serde_json::from_str(&text)
         .map_err(|_| AiError::Parse("unreadable model list".to_string()))?;
@@ -83,7 +83,9 @@ pub async fn pull(
     on_progress: &mut (dyn FnMut(PullProgress) + Send),
 ) -> Result<(), AiError> {
     let url = endpoint(base_url, "/api/pull")?;
-    let req = net::client().post(url.clone()).json(&json!({ "model": model, "stream": true }));
+    let req = net::client_for(url.as_str())
+        .post(url.clone())
+        .json(&json!({ "model": model, "stream": true }));
     let resp = net::send(req, &url).await?;
     let mut finished = false;
     net::read_stream(resp, |line| {

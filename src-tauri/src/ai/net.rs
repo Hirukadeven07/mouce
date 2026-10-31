@@ -22,17 +22,21 @@ pub fn check_allowed(url: &Url) -> Result<(), AiError> {
     if scheme != "http" && scheme != "https" {
         return Err(not_allowed());
     }
-    let loopback = match url.host() {
-        Some(Host::Domain(d)) => d == "localhost",
-        Some(Host::Ipv4(ip)) => ip.octets() == [127, 0, 0, 1],
-        _ => false,
-    };
-    if loopback {
+    if is_loopback(url) {
         return Ok(());
     }
     match url.host() {
         Some(Host::Domain(d)) if scheme == "https" && REMOTE_HOSTS.contains(&d) => Ok(()),
         _ => Err(not_allowed()),
+    }
+}
+
+/// `localhost` or `127.0.0.1`: a server on this computer (Ollama).
+pub fn is_loopback(url: &Url) -> bool {
+    match url.host() {
+        Some(Host::Domain(d)) => d == "localhost",
+        Some(Host::Ipv4(ip)) => ip.octets() == [127, 0, 0, 1],
+        _ => false,
     }
 }
 
@@ -73,7 +77,19 @@ pub fn secret_header(secret: &str) -> Result<reqwest::header::HeaderValue, AiErr
 /// HTTP client: 10 s connect timeout, no overall timeout (responses stream).
 /// Redirects are followed only within the original scheme, host and port, so
 /// credential headers never travel to another host; other hops are refused.
+/// It uses the system proxy, which some networks need to reach the online providers.
 pub fn client() -> reqwest::Client {
+    build_client(false)
+}
+
+/// The client for requests to `base`. A server on this computer is always reached
+/// directly: a system proxy would otherwise get the chat and screen pictures sent to
+/// Ollama, over plain http.
+pub fn client_for(base: &str) -> reqwest::Client {
+    build_client(Url::parse(base).is_ok_and(|u| is_loopback(&u)))
+}
+
+fn build_client(direct: bool) -> reqwest::Client {
     let policy = reqwest::redirect::Policy::custom(|attempt| {
         if attempt.previous().len() >= MAX_REDIRECTS {
             return attempt.error(RedirectStopped::TooMany);
@@ -87,11 +103,10 @@ pub fn client() -> reqwest::Client {
             attempt.error(RedirectStopped::NotAllowed(host))
         }
     });
-    reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(10))
-        .redirect(policy)
-        .build()
-        .expect("build HTTP client")
+    let builder =
+        reqwest::Client::builder().connect_timeout(Duration::from_secs(10)).redirect(policy);
+    let builder = if direct { builder.no_proxy() } else { builder };
+    builder.build().expect("build HTTP client")
 }
 
 fn map_send_error(e: reqwest::Error) -> AiError {

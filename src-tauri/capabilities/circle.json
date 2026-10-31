@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "circle",
+  "description": "The circle layer: the frozen screen picture and the circled part. No settings or keys.",
+  "windows": [
+    "circle"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-circle-frame",
+    "allow-circle-ready",
+    "allow-circle-finish",
+    "allow-circle-cancel"
+  ]
+}
