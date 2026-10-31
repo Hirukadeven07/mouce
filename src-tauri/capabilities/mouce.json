@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "mouce",
+  "description": "The floating mouce: dragging it, opening home on a click, and the reminder badge.",
+  "windows": [
+    "mouce"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "allow-get-settings",
+    "allow-mouce-clicked",
+    "allow-alerts-current"
+  ]
+}

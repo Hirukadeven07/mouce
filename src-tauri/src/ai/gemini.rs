@@ -25,7 +25,8 @@ impl std::fmt::Debug for GeminiProvider {
 
 impl GeminiProvider {
     pub fn new(base_url: String, api_key: String) -> Self {
-        Self { base: base_url.trim_end_matches('/').to_string(), api_key, client: net::client() }
+        let base = base_url.trim_end_matches('/').to_string();
+        Self { client: net::client_for(&base), base, api_key }
     }
 
     /// Adds the key as a sensitive header; it never goes in the URL.

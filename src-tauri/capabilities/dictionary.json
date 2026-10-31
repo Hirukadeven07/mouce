@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "dictionary",
+  "description": "The word card. It shows text read from other apps, so it can only show, size and close itself, or hand the word to the chat.",
+  "windows": [
+    "dictionary"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-get-settings",
+    "allow-dictionary-current",
+    "allow-dictionary-fit",
+    "allow-dictionary-close",
+    "allow-dictionary-chat"
+  ]
+}

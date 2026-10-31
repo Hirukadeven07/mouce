@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "firstrun",
+  "description": "The welcome window: choosing an AI, its key and model, and starting with Windows.",
+  "windows": [
+    "firstrun"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-get-settings",
+    "allow-update-settings",
+    "allow-set-api-key",
+    "allow-has-api-key",
+    "allow-clear-api-key",
+    "allow-list-models",
+    "allow-test-provider",
+    "allow-ollama-status",
+    "allow-pull-ollama-model",
+    "allow-open-ollama-download",
+    "allow-set-autostart",
+    "allow-finish-first-run"
+  ]
+}

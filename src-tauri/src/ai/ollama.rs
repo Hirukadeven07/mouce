@@ -12,7 +12,8 @@ pub struct OllamaProvider {
 
 impl OllamaProvider {
     pub fn new(base_url: String) -> Self {
-        Self { base: base_url.trim_end_matches('/').to_string(), client: net::client() }
+        let base = base_url.trim_end_matches('/').to_string();
+        Self { client: net::client_for(&base), base }
     }
 
     fn url(&self, path: &str) -> Result<Url, AiError> {
