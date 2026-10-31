@@ -21,6 +21,8 @@ async function root(): Promise<React.ReactElement> {
     }
     case "home": {
       await pageWindow();
+      // The home window is always dark, with its own palette (home.css).
+      document.documentElement.classList.add("home-window-page");
       await import("./home/home.css");
       await import("./chat/chat.css");
       const { HomeWindow } = await import("./home/HomeWindow");

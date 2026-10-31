@@ -284,6 +284,10 @@ fn open_window(
         if let Some(effects) = glass_effects(glass_on(app)) {
             builder = builder.effects(effects);
         }
+        // The home page is always dark, so its title bar is too.
+        if label == HOME_LABEL {
+            builder = builder.theme(Some(tauri::Theme::Dark));
+        }
         if let Some(script) = init_script {
             builder = builder.initialization_script(&script);
         }
