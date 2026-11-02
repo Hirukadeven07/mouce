@@ -110,6 +110,23 @@ mouce runs on Windows 11. Installers are published on the
 [Releases page](https://github.com/Hirukadeven07/mouce/releases), each with a `.sha256`
 checksum. Until the first release is out, build it from source.
 
+### Installing
+
+1. Download `mouce_<version>_x64-setup.exe` and its `.sha256` file from the latest release.
+2. Check the download is the one the release built. In PowerShell, in the download folder:
+
+   ```powershell
+   (Get-FileHash .\mouce_<version>_x64-setup.exe).Hash
+   ```
+
+   The result must match the code in the `.sha256` file (letter case doesn't matter). If it
+   doesn't, delete the download and don't run it.
+3. Run the installer. It doesn't need administrator rights.
+
+The installer isn't code-signed yet, so Windows SmartScreen warns that the publisher is
+unknown. Choose **More info**, then **Run anyway**. mouce doesn't update itself: to update,
+download and run the newest installer, which keeps your settings, keys and calendar.
+
 ### Build from source
 
 **Prerequisites:**
@@ -164,7 +181,8 @@ at most three files of about 1 MB each, replacing the oldest.
 - [x] **Dictionary:** Ctrl + right-click a word for its meaning, with an offline fallback
 - [x] **Calendar and reminders:** add events in plain language, confirm before saving, and get
       gentle reminders
-- [ ] **Packaging:** a signed Windows installer
+- [ ] **Packaging:** a downloadable Windows installer on the Releases page (code signing
+      comes later)
 
 ## Uninstalling
 
@@ -175,6 +193,11 @@ calendar, settings, log and saved API keys.
 ## Reporting a security problem
 
 Please report it privately; see [SECURITY.md](SECURITY.md).
+
+## License
+
+mouce is released under the [MIT License](LICENSE). The offline dictionary data keeps its own
+license, CC BY 4.0 (see Credits).
 
 ## Credits
 
