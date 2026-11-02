@@ -12,8 +12,9 @@ credit to you, unless you'd rather stay anonymous.
 
 ## Supported versions
 
-Only the latest release gets security fixes. mouce doesn't update itself, so download the
-newest installer from the [Releases](https://github.com/Hirukadeven07/mouce/releases) page.
+Only the latest release gets security fixes. mouce tells you when there's a new version
+(**Settings → Updates**); download its installer from the
+[Releases](https://github.com/Hirukadeven07/mouce/releases) page.
 
 ## What mouce promises
 

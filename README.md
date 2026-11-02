@@ -104,13 +104,21 @@ computer, and it can't type, click or use your clipboard.
 - **Your API keys stay locked away** in Windows Credential Manager.
 - **It keeps to itself.** It saves only in its own folder, keeps chat history only if you turn
   it on, and changes nothing else on your PC except an optional "Start with Windows" entry.
-- **It only opens one web page:** the Ollama download page, when you ask for it.
+- **It only opens two web pages,** and only when you press their buttons: the Ollama download
+  page and mouce's own release page.
+- **Update checks ask GitHub one question:** which version is the newest? Nothing about you or
+  your computer is sent, and you can turn them off.
 
 ## Updating
 
-mouce doesn't update itself. To update, download and run the newest installer from the
-[releases page](https://github.com/Hirukadeven07/mouce/releases/latest). Your settings, keys
-and calendar are kept.
+mouce checks for a new version now and then. When there is one, Home tells you, and
+**Settings → Updates** shows what's new with a **Download** button that opens the release page.
+Download the new installer and run it; your settings, keys and calendar are kept. mouce never
+downloads or installs anything by itself. You can turn the automatic check off in
+**Settings → Updates** and press **Check for updates** whenever you like.
+
+**On mouce 0.1.0?** It doesn't check for updates yet, so get the newest installer from the
+[releases page](https://github.com/Hirukadeven07/mouce/releases/latest).
 
 ## Uninstalling
 

@@ -353,6 +353,18 @@ html.home-window-page .card-head button.link {
   gap: 14px;
 }
 
+/* A newer version is ready: its name, and the way to Settings → Updates. */
+.update-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 14px;
+}
+
+.update-card .headline {
+  margin: 0;
+}
+
 .ai-card {
   display: flex;
   flex-wrap: wrap;

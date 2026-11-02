@@ -41,7 +41,8 @@ purpose, with the reason in the pull request.
 ## Making a release
 
 1. Set the same new version in `package.json`, `src-tauri/tauri.conf.json` and
-   `src-tauri/Cargo.toml`, and add its section to [CHANGELOG.md](CHANGELOG.md).
+   `src-tauri/Cargo.toml`, and rename the CHANGELOG's **Unreleased** section to the version
+   (`## 0.2.0`).
 2. Update the README's download links (the button and step 1 of Install) and the command in its
    checksum step to the new version's installer, for example
    `releases/download/v0.2.0/mouce_0.2.0_x64-setup.exe`. Merge these changes.
@@ -50,7 +51,8 @@ purpose, with the reason in the pull request.
 4. The **Release** workflow checks that the tag matches all three versions, builds the
    installer and attaches it, with its checksum, to a **draft** release.
 5. Review the draft on the Releases page, paste the version's CHANGELOG section into the
-   notes, and press **Publish**.
+   notes, and press **Publish**. The release notes are what people see in **Settings →
+   Updates**, so keep them about what changed for them.
 
 The README links point at the new installer as soon as step 2 is merged, but the file only
 exists once step 5 is done, so do steps 3 to 5 straight after merging.

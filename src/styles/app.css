@@ -495,6 +495,17 @@ html.page-window .item-field :where(input, select) {
 
 /* ---- progress ---- */
 
+/* The release notes of an available update, as written (line breaks kept). */
+.update-notes {
+  margin: 8px 0 0;
+  max-height: 160px;
+  overflow-y: auto;
+  color: var(--label-2);
+  font-size: 13px;
+  line-height: 18px;
+  white-space: pre-wrap;
+}
+
 .progress {
   display: flex;
   flex-wrap: wrap;

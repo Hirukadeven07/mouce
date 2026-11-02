@@ -254,7 +254,7 @@ fn opener_mentions(text: &str) -> Vec<&'static str> {
 }
 
 #[test]
-fn opener_is_only_used_for_the_fixed_download_url() {
+fn opener_is_only_used_for_the_fixed_pages() {
     let src = manifest_dir().join("src");
     let mut files = Vec::new();
     rust_files(&src, &mut files);
@@ -293,16 +293,24 @@ fn opener_is_only_used_for_the_fixed_download_url() {
     let lib = fs::read_to_string(&lib_rs).unwrap();
     assert!(lib.contains("tauri_plugin_opener::init()"), "lib.rs must register the opener plugin");
 
-    // commands.rs: exactly one import and one call site, and the call uses the fixed URL.
+    // commands.rs: exactly one import and one call site, inside `open_page`, which is only
+    // ever handed one of the two fixed pages.
     let commands = fs::read_to_string(&commands_rs).unwrap();
     assert_eq!(commands.matches("tauri_plugin_opener::").count(), 1, "one opener import only");
     assert_eq!(commands.matches(".opener()").count(), 1, "one opener call site only");
     assert_eq!(commands.matches("open_url(").count(), 1, "one open_url call only");
-    assert!(commands.contains("open_url(OLLAMA_DOWNLOAD_URL"));
-    assert!(
-        commands.contains("\"https://ollama.com/download\""),
-        "commands.rs must contain the literal download URL"
-    );
+    assert!(commands.contains("fn open_page(app: &AppHandle, url: &'static str)"));
+    let pages: Vec<&str> = commands
+        .match_indices("open_page(&app, ")
+        .map(|(i, _)| commands[i + "open_page(&app, ".len()..].split(')').next().unwrap_or(""))
+        .collect();
+    assert_eq!(pages, ["OLLAMA_DOWNLOAD_URL", "RELEASES_URL"], "open_page may open only these");
+    for literal in [
+        "const OLLAMA_DOWNLOAD_URL: &str = \"https://ollama.com/download\";",
+        "const RELEASES_URL: &str = \"https://github.com/Hirukadeven07/mouce/releases/latest\";",
+    ] {
+        assert!(commands.contains(literal), "commands.rs must contain `{literal}`");
+    }
 }
 
 /// The only keys a capability file may have. Notably absent: `remote` (web pages calling the
@@ -355,6 +363,9 @@ const WINDOW_GRANTS: &[(&str, &[&str])] = &[
             "calendar_skip_day",
             "calendar_change_day",
             "calendar_understand",
+            "update_check",
+            "update_current",
+            "update_open_download",
         ],
     ),
     (
@@ -423,6 +434,7 @@ const SENSITIVE: &[(&str, &[&str])] = &[
     ("chat_clear", &["home", "chat"]),
     ("calendar_delete", &["home"]),
     ("calendar_clear_done", &["home"]),
+    ("update_check", &["home"]),
 ];
 
 /// `allow-chat-send` for `chat_send`; core permissions stay as they are.
@@ -797,4 +809,41 @@ fn hook_guard_catches_other_hooks_and_keys() {
     assert!(!hook_problems("dictionary/hook.rs", "GetAsyncKeyState(0x41)").is_empty());
     assert!(!hook_problems("chat.rs", "SetWindowsHookExW(WH_MOUSE_LL, p)").is_empty());
     assert!(!hook_problems("chat.rs", "GetAsyncKeyState(VK_CONTROL.0 as i32)").is_empty());
+}
+
+/// The update check reads one fixed address, and only `updates.rs` may contact GitHub.
+#[test]
+fn update_check_reads_only_the_fixed_github_address() {
+    let src = manifest_dir().join("src");
+    let mut files = Vec::new();
+    rust_files(&src, &mut files);
+    let mut failures = Vec::new();
+    for file in &files {
+        let rel = file.strip_prefix(&src).unwrap_or(file).display().to_string();
+        let text = fs::read_to_string(file).unwrap();
+        if !rel.ends_with("updates.rs") && text.contains("api.github.com") {
+            failures.push(format!("{rel}: only updates.rs may contact GitHub"));
+        }
+    }
+    let updates = fs::read_to_string(src.join("updates.rs")).unwrap();
+    // The module's own code, not its tests (which use made-up addresses).
+    let updates = updates.split("#[cfg(test)]").next().unwrap_or_default();
+    assert_eq!(
+        updates.matches("\"https://").count(),
+        1,
+        "updates.rs must contain exactly one address, the latest-release API"
+    );
+    assert!(
+        updates.contains("\"https://api.github.com/repos/Hirukadeven07/mouce/releases/latest\"")
+    );
+    assert!(updates.contains("Policy::none()"), "the update check must not follow redirects");
+    assert!(
+        failures.is_empty(),
+        "update check guard failed:
+{}",
+        failures.join(
+            "
+"
+        )
+    );
 }

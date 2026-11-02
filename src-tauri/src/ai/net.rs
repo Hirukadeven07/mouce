@@ -221,7 +221,7 @@ pub async fn error_from_response(resp: reqwest::Response) -> AiError {
 }
 
 /// Reads at most `limit` bytes of the body, then stops (dropping the rest).
-async fn read_body_capped(resp: reqwest::Response, limit: usize) -> Vec<u8> {
+pub(crate) async fn read_body_capped(resp: reqwest::Response, limit: usize) -> Vec<u8> {
     let mut stream = resp.bytes_stream();
     let mut body = Vec::new();
     while body.len() < limit {

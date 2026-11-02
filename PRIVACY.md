@@ -1,7 +1,8 @@
 # Privacy
 
 mouce has no account, no analytics and no servers of its own. It talks only to the AI you
-choose in Settings, and only when you ask it something.
+choose in Settings, when you ask it something, and to GitHub, to see whether there's a new
+version.
 
 ## Where your data goes
 
@@ -27,6 +28,14 @@ and an answer can't redirect it to one.
 
 If the online AI fails and "If the online AI fails, use local" is on (it is by default),
 the same question goes to Ollama on your computer instead.
+
+## Checking for updates
+
+Now and then (and when you press **Check for updates**), mouce asks GitHub which release is the
+newest, at `api.github.com/repos/Hirukadeven07/mouce/releases/latest`. Like any website, GitHub
+sees your IP address and the mouce version you have; mouce sends nothing else. It never
+downloads an update itself: **Download** opens the release page in your browser. Turn off
+**Check for updates automatically** in **Settings → Updates** to stop the automatic checks.
 
 ## What stays on your computer
 

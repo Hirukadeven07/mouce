@@ -42,6 +42,8 @@ export interface Settings {
   quiet_to: string;
   /** Reminders wait while an app fills the screen. */
   wait_for_full_screen: boolean;
+  /** Looks for a newer version now and then; installing always waits for the user. */
+  check_for_updates: boolean;
 }
 
 export type MouceState = "idle" | "thinking" | "looking" | "reminder";
@@ -85,6 +87,13 @@ export interface ChatReply {
   stopped: boolean;
   /** The chosen online AI failed, so the local one answered instead. */
   used_local: boolean;
+}
+
+/** A newer version of mouce, found by an update check. */
+export interface UpdateInfo {
+  version: string;
+  current_version: string;
+  notes: string | null;
 }
 
 export interface PullProgress {
