@@ -2,6 +2,7 @@
 name = "mouce"
 version = "0.1.0"
 description = "mouce"
+license = "MIT"
 edition = "2021"
 
 [lib]
