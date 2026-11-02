@@ -9,201 +9,129 @@
 </p>
 
 <p align="center">
-  <img alt="Platform: Windows 11" src="https://img.shields.io/badge/platform-Windows%2011-0078D4?logo=windows11&logoColor=white">
-  <img alt="Built with Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white">
-  <img alt="Rust" src="https://img.shields.io/badge/Rust-backend-000000?logo=rust&logoColor=white">
-  <img alt="React and TypeScript" src="https://img.shields.io/badge/React%20%2B%20TypeScript-UI-3178C6?logo=typescript&logoColor=white">
-  <a href="https://github.com/Hirukadeven07/mouce/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Hirukadeven07/mouce"></a>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="https://github.com/Hirukadeven07/mouce/releases/download/v0.1.0/mouce_0.1.0_x64-setup.exe"><img alt="Download mouce 0.1.0 for Windows" src="https://img.shields.io/badge/Download-mouce%200.1.0%20for%20Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Hirukadeven07/mouce/releases/latest"><strong>Download</strong></a> ·
-  <a href="#features">Features</a> ·
-  <a href="#the-safety-promise">Safety</a> ·
-  <a href="#ai-providers">AI providers</a> ·
-  <a href="#getting-started">Getting started</a> ·
-  <a href="#roadmap">Roadmap</a>
+  Windows 11 · 8.4 MB · free and open source (MIT) ·
+  <a href="https://github.com/Hirukadeven07/mouce/releases/latest">all releases and checksums</a>
 </p>
 
 ---
 
-## Overview
+## What mouce does
 
-mouce is a small, always-on-top companion that sits in a corner of your Windows desktop. It
-never takes keyboard focus from the app you're working in. When you want help, it asks the AI
-you choose: a free local model through [Ollama](https://ollama.com), or an online provider with
-your own API key.
+mouce is a small, always-on-top companion that sits in a corner of your desktop. It never
+takes keyboard focus from the app you're working in. When you want help, it asks the AI you
+choose: a free local AI on your own computer, or an online one with your own API key.
 
-## Features
-
-- **Stays out of your way.** Small, transparent and always on top. It never steals focus,
-  stays out of the taskbar and Alt+Tab, and remembers where you dragged it.
-- **Chat beside your work.** Click mouce, or press **Ctrl+Alt+M** from any app (you can
-  change the shortcut in Settings), to open a small chat panel next to it. Answers
-  stream in as they're written, and you can stop one at any time.
+- **Chat beside your work.** Click mouce, or press **Ctrl+Alt+M** in any app, to open a small
+  chat panel next to it. Answers appear as they're written, and you can stop one at any time.
 - **Look at my screen.** Press "Look at my screen" and mouce takes one picture of the screen
   it's on, so you can ask about whatever is in front of you.
-- **Circle to look up.** Press **Ctrl+Alt+O** in any app (or use the chat's Circle button)
-  and the screen freezes. Draw around anything, and only that part goes to the chat for you
-  to ask about. Esc or a right-click cancels.
-- **Dictionary.** Hold **Ctrl** and right-click a word in any app. A small card beside it
-  shows how to say it, its meanings and examples, from a dictionary built into mouce that
-  works offline. With an AI set up, the card also says what the word means in the sentence
-  you're reading. Select a phrase ("by and large") and Ctrl + right-click inside it to have
-  the AI explain the whole phrase. "Chat about this" takes the word to the chat; a click or
-  scroll anywhere else closes the card. A plain right-click is never touched, and you can
-  turn the dictionary off in Settings.
-- **Calendar and reminders.** Type "dentist tomorrow at 3pm" in the Calendar tab, "remind
-  me to submit the lab report on Friday" in Reminders, or just tell mouce in the chat
-  ("remind me to call mum every Saturday at 6pm"). The AI fills in a short form for you to
-  check, and nothing is saved until you press Save. Events can have an end time, and the
-  form warns when one clashes with another. Events and reminders can repeat every day,
-  weekday, week, month or year, and one day of a repeating event can be changed or
-  removed on its own. When something is due, a small card opens beside mouce and mouce
-  glows, with no sound: snooze it for 10 minutes, an hour or until tomorrow, mark it done,
-  or click it to open it. Reminders wait during your quiet hours and while an app is full
-  screen. Ask the chat "what's on tomorrow?" or "am I free on Friday?" and it answers from
-  your calendar (you can turn this off). Home shows what's coming up this week. Without an
-  AI, you fill in the form yourself.
-- **Shows what it's doing.** It sways gently when idle, moves faster while thinking, dims and
-  pulses while looking, and glows when something needs your attention.
-- **Your choice of AI.** Run a local model on your own machine, or bring a key for OpenAI,
-  Groq, Gemini or Claude. If the online AI fails, it can fall back to the local one.
-- **Guided first run.** Detects whether Ollama is installed and running, and downloads a
-  starter model only after you confirm.
-- **Tray controls.** Open mouce or the chat, circle to look up, open Settings, pause or show
-  mouce, or quit, all from the system tray.
-- **Adjustable.** Small, medium or large size, sway on or off, and an optional start with
-  Windows.
+- **Circle to look up.** Press **Ctrl+Alt+O** in any app and the screen freezes. Draw around
+  anything, and only that part goes to the chat for you to ask about.
+- **Dictionary.** Hold **Ctrl** and right-click a word in any app to see how to say it, its
+  meanings and examples, even offline. With an AI set up, it also explains what the word means
+  in the sentence you're reading. Select a phrase first to have the whole phrase explained.
+- **Calendar and reminders.** Type "dentist tomorrow at 3pm" or tell the chat "remind me to call
+  mum every Saturday at 6pm". mouce fills in a short form for you to check, and nothing is saved
+  until you press Save. Events can repeat, and you can change a single day of a repeating one.
+  When something is due, a small card appears beside mouce (no sound): snooze it, mark it done,
+  or open it. Reminders wait during your quiet hours and while you're in a full-screen app. Ask
+  the chat "am I free on Friday?" and it answers from your calendar.
+- **Shows what it's doing.** It sways gently when idle, moves faster while thinking, pulses
+  while looking, and glows when something needs your attention.
+- **Yours to adjust.** Three sizes, your own shortcuts, an optional start with Windows, and
+  everything else from the home window or the tray icon.
 
-## The safety promise
+## Getting started
 
-mouce can look but never touch. It can never open, change, delete or run anything on your
-computer.
+### 1. Install
 
-| Guarantee | How it's enforced |
-| --- | --- |
-| No file, process, clipboard or input access | The app contains no file-write, process-launch, clipboard-write or input-synthesis code. An automated scan ([`src-tauri/tests/safety_scan.rs`](src-tauri/tests/safety_scan.rs)) fails the build if such APIs, extra capabilities or extra permissions appear. |
-| Watches one mouse gesture, and nothing else | While the dictionary is on, a mouse hook waits for Ctrl + right-click. It only notes which button went down and where; it never moves the pointer, clicks or reads the keyboard, and it holds back only that one Ctrl + right-click so the app's own menu stays shut. The scan allows no other kind of hook, and turning the dictionary off removes it. |
-| Looks only when you ask | mouce takes a picture of your screen only when you press "Look at my screen" or start Circle to look up. Ctrl + right-click reads just the word (or the phrase you selected) under the pointer and its sentence, through Windows' accessibility interface (read-only), or from a small picture around the pointer when an app doesn't share its text. Password boxes are never read. Pictures stay in memory and are never saved; only the part you circle (or the screen you chose to share) goes to the AI you picked, the dictionary sends it only the word and its sentence, and saved chat history keeps text only. |
-| Writes only to its own folder | A single storage module writes to disk, and only inside the app's data folder. The log goes to the app's own log folder; the scan rejects any other log location. |
-| API keys stay secret | Keys are stored in Windows Credential Manager. They are written from Settings and read only by the Rust backend to reach the provider you picked; they never reach the web view. |
-| Each window can do only its own job | Every window has its own permission list, so the word card, the circle layer and the reminder card can't reach your API keys, your settings or the screen picture. The scan fails the build if a window gains a command it doesn't use. |
-| No surprise browsing | The only address the app ever opens in your browser is the Ollama download page. |
-| One system change, with your consent | "Start with Windows" adds the app's own startup entry, and only if you turn it on. |
+1. [Download the installer](https://github.com/Hirukadeven07/mouce/releases/download/v0.1.0/mouce_0.1.0_x64-setup.exe).
+2. Optional but recommended: check the download is genuine. In PowerShell, in your Downloads
+   folder, run:
 
-## AI providers
+   ```powershell
+   (Get-FileHash .\mouce_0.1.0_x64-setup.exe).Hash
+   ```
 
-| Provider | Runs on | What you need |
+   It must print the same code as the `.sha256` file on the
+   [release page](https://github.com/Hirukadeven07/mouce/releases/latest) (letter case doesn't
+   matter). If it doesn't, delete the download and don't run it.
+3. Run the installer. It doesn't need administrator rights.
+
+The installer isn't code-signed yet, so Windows SmartScreen warns that the publisher is
+unknown. Choose **More info**, then **Run anyway**.
+
+### 2. Choose an AI
+
+The first time mouce starts, it helps you pick one:
+
+| AI | Runs on | What you need |
 | --- | --- | --- |
-| Local (Ollama) | Your computer | [Ollama](https://ollama.com) and one model (first run offers to download it) |
+| Local (Ollama) | Your computer, nothing leaves it | [Ollama](https://ollama.com), free. mouce offers to download a starter model. |
 | OpenAI | Online | An OpenAI API key |
 | Groq | Online | A Groq API key |
 | Gemini | Online | A Google AI Studio API key |
 | Claude | Online | An Anthropic API key |
 
-Choosing an online provider means content you ask about is sent to that provider. Nothing is
-sent anywhere you didn't pick. [PRIVACY.md](PRIVACY.md) lists exactly what goes where.
+You can change it any time in **Settings**. If an online AI fails, mouce can answer with the
+local one instead.
 
-## Getting started
+### 3. Use it
 
-mouce runs on Windows 11. Download the installer from the
-[latest release](https://github.com/Hirukadeven07/mouce/releases/latest); each one comes with a
-`.sha256` checksum. You can also build it from source.
+| To… | Do this |
+| --- | --- |
+| Open the chat | Click mouce, or press **Ctrl+Alt+M** |
+| Ask about part of the screen | Press **Ctrl+Alt+O** and draw around it (**Esc** cancels) |
+| Look up a word | Hold **Ctrl** and right-click it |
+| Open the home window, calendar and settings | Click mouce while the chat is open, or use the tray icon |
+| Hide mouce or quit | Right-click the mouce icon in the system tray |
 
-### Installing
+You can change both shortcuts in **Settings**.
 
-1. Download `mouce_<version>_x64-setup.exe` and its `.sha256` file from the latest release.
-2. Check the download is the one the release built. In PowerShell, in the download folder:
+## Your privacy and safety
 
-   ```powershell
-   (Get-FileHash .\mouce_<version>_x64-setup.exe).Hash
-   ```
+mouce can look but never touch. It can't open, change, delete or run anything on your
+computer, and it can't type, click or use your clipboard.
 
-   The result must match the code in the `.sha256` file (letter case doesn't matter). If it
-   doesn't, delete the download and don't run it.
-3. Run the installer. It doesn't need administrator rights.
+- **It looks only when you ask.** A picture of your screen is taken only when you press "Look
+  at my screen" or circle something. Pictures are never saved, and password boxes are never read.
+- **It sends only what you ask about, only to the AI you chose.** With the local AI, nothing
+  leaves your computer. [PRIVACY.md](PRIVACY.md) lists exactly what goes where.
+- **Your API keys stay locked away** in Windows Credential Manager.
+- **It keeps to itself.** It saves only in its own folder, keeps chat history only if you turn
+  it on, and changes nothing else on your PC except an optional "Start with Windows" entry.
+- **It only opens one web page:** the Ollama download page, when you ask for it.
 
-The installer isn't code-signed yet, so Windows SmartScreen warns that the publisher is
-unknown. Choose **More info**, then **Run anyway**. mouce doesn't update itself: to update,
-download and run the newest installer, which keeps your settings, keys and calendar.
+## Updating
 
-### Build from source
-
-**Prerequisites:**
-
-- [Node.js](https://nodejs.org)
-- [Rust](https://rustup.rs) with the MSVC toolchain
-- The WebView2 runtime (already part of Windows 11)
-
-```sh
-git clone https://github.com/Hirukadeven07/mouce.git
-cd mouce
-npm ci
-npm run tauri build
-```
-
-The installer is written to `src-tauri/target/release/bundle/nsis/`. It isn't code-signed, so
-the first time you run it Windows SmartScreen will warn that the publisher is unknown. Choose
-**More info**, then **Run anyway**.
-
-### First run
-
-When mouce starts for the first time, it checks whether Ollama is installed and running and
-offers to download a starter model. To use an online provider instead, choose **Use an online
-AI** and enter your API key. To open Settings later, right-click the mouce icon in the system
-tray.
-
-### Logs
-
-If something goes wrong, mouce records it in `%LOCALAPPDATA%\com.mouce.app\logs\mouce.log`
-(paste that path into File Explorer's address bar). The log holds start-up lines, warnings,
-errors and crash details; it never contains your chats, screen pictures or API keys. It keeps
-at most three files of about 1 MB each, replacing the oldest.
-
-### Making a release
-
-1. Set the same new version in `package.json`, `src-tauri/tauri.conf.json` and
-   `src-tauri/Cargo.toml`, add its section to [CHANGELOG.md](CHANGELOG.md), and merge that
-   change.
-2. Tag the merged commit on `main` and push the tag:
-   `git tag v0.2.0 && git push origin v0.2.0`
-3. The **Release** workflow checks that the tag matches all three versions, builds the
-   installer and attaches it, with its checksum, to a **draft** release.
-4. Review the draft on the Releases page, paste the version's CHANGELOG section into the
-   notes, and press **Publish**.
-
-## Roadmap
-
-- [x] **Skeleton and safety:** companion window, tray, settings, AI provider layer, secure key
-      storage, capability lockdown, safety scan, first run
-- [x] **Chat:** a panel next to mouce with streaming answers and "Look at my screen"
-- [x] **Circle to look up:** draw around anything on screen and ask about it
-- [x] **Dictionary:** Ctrl + right-click a word for its meaning, with an offline fallback
-- [x] **Calendar and reminders:** add events in plain language, confirm before saving, and get
-      gentle reminders
-- [x] **Packaging:** a downloadable Windows installer on the Releases page (code signing
-      comes later)
+mouce doesn't update itself. To update, download and run the newest installer from the
+[releases page](https://github.com/Hirukadeven07/mouce/releases/latest). Your settings, keys
+and calendar are kept.
 
 ## Uninstalling
 
 Uninstall mouce from **Settings → Apps → Installed apps**. This always removes its "Start
 with Windows" entry. Tick **Delete the application data** to also remove your chat history,
-calendar, settings, log and saved API keys.
+calendar, settings and saved API keys.
 
-## Reporting a security problem
+## Help
 
-Please report it privately; see [SECURITY.md](SECURITY.md).
+- **Something isn't working?** [Open an issue](https://github.com/Hirukadeven07/mouce/issues)
+  and describe what happened. It helps to attach the log, `%LOCALAPPDATA%\com.mouce.app\logs\mouce.log`
+  (paste that path into File Explorer's address bar). The log never contains your chats,
+  screen pictures or API keys.
+- **Found a security problem?** Please report it privately; see [SECURITY.md](SECURITY.md).
 
-## License
+## License and credits
 
-mouce is released under the [MIT License](LICENSE). The offline dictionary data keeps its own
-license, CC BY 4.0 (see Credits).
-
-## Credits
+mouce is free and open source under the [MIT License](LICENSE). What changed in each version
+is in the [changelog](CHANGELOG.md).
 
 The offline dictionary is built from [Open English WordNet](https://github.com/globalwordnet/english-wordnet)
 (2025 edition), © the Open English WordNet team, licensed under
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). mouce keeps a trimmed copy; see
-[`src-tauri/dictionary`](src-tauri/dictionary) for what was changed and how it is built.
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). mouce uses a trimmed copy; see
+[`src-tauri/dictionary`](src-tauri/dictionary) for what was changed.

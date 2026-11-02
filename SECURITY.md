@@ -17,6 +17,6 @@ newest installer from the [Releases](https://github.com/Hirukadeven07/mouce/rele
 
 ## What mouce promises
 
-The safety promises in the [README](README.md#the-safety-promise) are enforced in code and checked on
+The safety promises in the [README](README.md#your-privacy-and-safety) are enforced in code and checked on
 every build by [`src-tauri/tests/safety_scan.rs`](src-tauri/tests/safety_scan.rs). A way
 around any of them counts as a vulnerability.
