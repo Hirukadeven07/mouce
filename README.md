@@ -13,10 +13,12 @@
   <img alt="Built with Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-backend-000000?logo=rust&logoColor=white">
   <img alt="React and TypeScript" src="https://img.shields.io/badge/React%20%2B%20TypeScript-UI-3178C6?logo=typescript&logoColor=white">
-  <img alt="Status: early development" src="https://img.shields.io/badge/status-early%20development-orange">
+  <a href="https://github.com/Hirukadeven07/mouce/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Hirukadeven07/mouce"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
 <p align="center">
+  <a href="https://github.com/Hirukadeven07/mouce/releases/latest"><strong>Download</strong></a> ·
   <a href="#features">Features</a> ·
   <a href="#the-safety-promise">Safety</a> ·
   <a href="#ai-providers">AI providers</a> ·
@@ -106,9 +108,9 @@ sent anywhere you didn't pick. [PRIVACY.md](PRIVACY.md) lists exactly what goes 
 
 ## Getting started
 
-mouce runs on Windows 11. Installers are published on the
-[Releases page](https://github.com/Hirukadeven07/mouce/releases), each with a `.sha256`
-checksum. Until the first release is out, build it from source.
+mouce runs on Windows 11. Download the installer from the
+[latest release](https://github.com/Hirukadeven07/mouce/releases/latest); each one comes with a
+`.sha256` checksum. You can also build it from source.
 
 ### Installing
 
@@ -181,7 +183,7 @@ at most three files of about 1 MB each, replacing the oldest.
 - [x] **Dictionary:** Ctrl + right-click a word for its meaning, with an offline fallback
 - [x] **Calendar and reminders:** add events in plain language, confirm before saving, and get
       gentle reminders
-- [ ] **Packaging:** a downloadable Windows installer on the Releases page (code signing
+- [x] **Packaging:** a downloadable Windows installer on the Releases page (code signing
       comes later)
 
 ## Uninstalling
