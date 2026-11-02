@@ -87,6 +87,7 @@ computer.
 | Looks only when you ask | mouce takes a picture of your screen only when you press "Look at my screen" or start Circle to look up. Ctrl + right-click reads just the word (or the phrase you selected) under the pointer and its sentence, through Windows' accessibility interface (read-only), or from a small picture around the pointer when an app doesn't share its text. Password boxes are never read. Pictures stay in memory and are never saved; only the part you circle (or the screen you chose to share) goes to the AI you picked, the dictionary sends it only the word and its sentence, and saved chat history keeps text only. |
 | Writes only to its own folder | A single storage module writes to disk, and only inside the app's data folder. The log goes to the app's own log folder; the scan rejects any other log location. |
 | API keys stay secret | Keys are stored in Windows Credential Manager. They are written from Settings and read only by the Rust backend to reach the provider you picked; they never reach the web view. |
+| Each window can do only its own job | Every window has its own permission list, so the word card, the circle layer and the reminder card can't reach your API keys, your settings or the screen picture. The scan fails the build if a window gains a command it doesn't use. |
 | No surprise browsing | The only address the app ever opens in your browser is the Ollama download page. |
 | One system change, with your consent | "Start with Windows" adds the app's own startup entry, and only if you turn it on. |
 
@@ -101,7 +102,7 @@ computer.
 | Claude | Online | An Anthropic API key |
 
 Choosing an online provider means content you ask about is sent to that provider. Nothing is
-sent anywhere you didn't pick.
+sent anywhere you didn't pick. [PRIVACY.md](PRIVACY.md) lists exactly what goes where.
 
 ## Getting started
 
@@ -162,6 +163,16 @@ at most three files of about 1 MB each, replacing the oldest.
 - [x] **Calendar and reminders:** add events in plain language, confirm before saving, and get
       gentle reminders
 - [ ] **Packaging:** a signed Windows installer
+
+## Uninstalling
+
+Uninstall mouce from **Settings → Apps → Installed apps**. This always removes its "Start
+with Windows" entry. Tick **Delete the application data** to also remove your chat history,
+calendar, settings, log and saved API keys.
+
+## Reporting a security problem
+
+Please report it privately; see [SECURITY.md](SECURITY.md).
 
 ## Credits
 

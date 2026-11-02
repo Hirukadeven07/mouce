@@ -112,6 +112,34 @@ mod tests {
         Cleanup(Secrets::new(&format!("com.mouce.app.test.{name}")))
     }
 
+    /// The uninstaller deletes each saved key by its Credential Manager name, so every
+    /// provider that keeps a key must be listed in `windows/hooks.nsh`.
+    #[test]
+    fn uninstaller_deletes_every_saved_key() {
+        let hooks = include_str!("../windows/hooks.nsh");
+        let all = [
+            ProviderId::Ollama,
+            ProviderId::OpenAi,
+            ProviderId::Groq,
+            ProviderId::Gemini,
+            ProviderId::Anthropic,
+        ];
+        for p in all {
+            // A new provider stops this compiling until it is added to `all` and here.
+            let keeps_key = match p {
+                ProviderId::Ollama => false,
+                ProviderId::OpenAi
+                | ProviderId::Groq
+                | ProviderId::Gemini
+                | ProviderId::Anthropic => true,
+            };
+            let user = serde_json::to_value(p).unwrap();
+            // keyring names a Windows credential `<user>.<service>`.
+            let name = format!("{}.com.mouce.app", user.as_str().unwrap());
+            assert_eq!(hooks.contains(&format!("/delete:{name}'")), keeps_key, "{name}");
+        }
+    }
+
     #[test]
     fn set_key_trims_and_rejects_blank() {
         let _lock = lock_credential_store();
