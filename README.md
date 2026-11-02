@@ -146,12 +146,14 @@ at most three files of about 1 MB each, replacing the oldest.
 ### Making a release
 
 1. Set the same new version in `package.json`, `src-tauri/tauri.conf.json` and
-   `src-tauri/Cargo.toml`, and merge that change.
+   `src-tauri/Cargo.toml`, add its section to [CHANGELOG.md](CHANGELOG.md), and merge that
+   change.
 2. Tag the merged commit on `main` and push the tag:
    `git tag v0.2.0 && git push origin v0.2.0`
 3. The **Release** workflow checks that the tag matches all three versions, builds the
    installer and attaches it, with its checksum, to a **draft** release.
-4. Review the draft on the Releases page, edit the notes, and press **Publish**.
+4. Review the draft on the Releases page, paste the version's CHANGELOG section into the
+   notes, and press **Publish**.
 
 ## Roadmap
 
