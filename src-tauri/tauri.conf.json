@@ -18,6 +18,18 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "icon": ["icons/icon.ico"]
+    "icon": ["icons/icon.ico"],
+    "publisher": "Hirukadeven07",
+    "copyright": "© 2026 Hirukadeven07",
+    "homepage": "https://github.com/Hirukadeven07/mouce",
+    "category": "Productivity",
+    "shortDescription": "A small desktop companion that answers questions about what's on your screen",
+    "longDescription": "mouce sits on your desktop and lets you chat with an AI, ask about your screen, circle anything to look it up, find word meanings with Ctrl + right-click, and keep a calendar with reminders. It can run fully on your computer with Ollama, or with an online AI you choose.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    }
   }
 }
