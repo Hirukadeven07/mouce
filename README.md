@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Hirukadeven07/mouce/releases/download/v0.1.0/mouce_0.1.0_x64-setup.exe"><img alt="Download mouce 0.1.0 for Windows" src="https://img.shields.io/badge/Download-mouce%200.1.0%20for%20Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white"></a>
+  <a href="https://github.com/Hirukadeven07/mouce/releases/download/v0.1.1/mouce_0.1.1_x64-setup.exe"><img alt="Download mouce 0.1.1 for Windows" src="https://img.shields.io/badge/Download-mouce%200.1.1%20for%20Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white"></a>
 </p>
 
 <p align="center">
@@ -49,12 +49,12 @@ choose: a free local AI on your own computer, or an online one with your own API
 
 ### 1. Install
 
-1. [Download the installer](https://github.com/Hirukadeven07/mouce/releases/download/v0.1.0/mouce_0.1.0_x64-setup.exe).
+1. [Download the installer](https://github.com/Hirukadeven07/mouce/releases/download/v0.1.1/mouce_0.1.1_x64-setup.exe).
 2. Optional but recommended: check the download is genuine. In PowerShell, in your Downloads
    folder, run:
 
    ```powershell
-   (Get-FileHash .\mouce_0.1.0_x64-setup.exe).Hash
+   (Get-FileHash .\mouce_0.1.1_x64-setup.exe).Hash
    ```
 
    It must print the same code as the `.sha256` file on the

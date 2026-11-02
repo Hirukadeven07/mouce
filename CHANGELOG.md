@@ -2,7 +2,9 @@
 
 What changed in each release of mouce. Versions follow [Semantic Versioning](https://semver.org).
 
-## Unreleased
+## 0.1.1
+
+mouce now tells you when a new version is out.
 
 - **Update notices.** mouce checks GitHub for a new version now and then. Home tells you when
   one is out, and **Settings → Updates** shows what's new with a **Download** button that opens
