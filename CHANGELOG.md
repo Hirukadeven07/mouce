@@ -41,6 +41,6 @@ what's on your screen.
 ### Installing
 
 - A Windows 11 installer with a SHA-256 checksum. It isn't code-signed yet, so SmartScreen
-  warns that the publisher is unknown; see [Installing](README.md#installing).
+  warns that the publisher is unknown; see [Install](README.md#1-install).
 - Uninstalling removes the "Start with Windows" entry. Ticking "Delete the application data"
   also removes your data and saved API keys.
