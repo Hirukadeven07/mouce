@@ -174,6 +174,11 @@ calendar, settings, log and saved API keys.
 
 Please report it privately; see [SECURITY.md](SECURITY.md).
 
+## License
+
+mouce is released under the [MIT License](LICENSE). The offline dictionary data keeps its own
+license, CC BY 4.0 (see Credits).
+
 ## Credits
 
 The offline dictionary is built from [Open English WordNet](https://github.com/globalwordnet/english-wordnet)
