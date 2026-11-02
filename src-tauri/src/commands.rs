@@ -9,7 +9,7 @@ use crate::calendar::{self, alerts, understand};
 use crate::chat::{self, Conversation, Snip, Turn};
 use crate::ollama_setup::{self, OllamaStatus, PullProgress};
 use crate::settings::{self, ProviderId, Settings};
-use crate::{circle, dictionary, hotkey, mouce, screen, AppState};
+use crate::{circle, dictionary, hotkey, mouce, screen, updates, AppState};
 use serde::Serialize;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -23,8 +23,9 @@ use tokio::sync::Notify;
 
 /// Event to the webview while a model downloads: payload is a `PullProgress`.
 pub const PULL_PROGRESS_EVENT: &str = "ollama-pull-progress";
-/// The only address the app ever opens in the browser.
+/// The only addresses the app ever opens in the browser.
 const OLLAMA_DOWNLOAD_URL: &str = "https://ollama.com/download";
+const RELEASES_URL: &str = "https://github.com/Hirukadeven07/mouce/releases/latest";
 
 const TEST_SYSTEM: &str = "You are a connection test.";
 const TEST_USER: &str = "Reply with exactly: ready";
@@ -1018,10 +1019,15 @@ pub async fn pull_ollama_model(
     .await
 }
 
+/// Opens one of the fixed pages above in the default browser.
+fn open_page(app: &AppHandle, url: &'static str) -> Result<(), String> {
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
 /// Opens the fixed Ollama download page in the default browser. Takes no URL on purpose.
 #[tauri::command]
 pub fn open_ollama_download(app: AppHandle) -> Result<(), String> {
-    app.opener().open_url(OLLAMA_DOWNLOAD_URL, None::<&str>).map_err(|e| e.to_string())
+    open_page(&app, OLLAMA_DOWNLOAD_URL)
 }
 
 // ---- startup and first run ----
@@ -1055,6 +1061,27 @@ pub fn finish_first_run(app: AppHandle, state: State<'_, AppState>) -> Result<()
         log_best_effort("close the first-run window", window.close(), |m| log::warn!("{m}"));
     }
     Ok(())
+}
+
+// ---- updates ----
+
+/// Looks for a newer version now ("Check for updates").
+#[tauri::command]
+pub async fn update_check(app: AppHandle) -> Result<Option<updates::UpdateInfo>, String> {
+    updates::check(&app).await
+}
+
+/// The newer version an earlier check found, if any.
+#[tauri::command(async)]
+pub fn update_current(app: AppHandle) -> Option<updates::UpdateInfo> {
+    updates::current(&app)
+}
+
+/// Opens the latest release's page in the browser, to download the new installer. Takes no
+/// URL on purpose.
+#[tauri::command]
+pub fn update_open_download(app: AppHandle) -> Result<(), String> {
+    open_page(&app, RELEASES_URL)
 }
 
 #[cfg(test)]
@@ -1830,6 +1857,13 @@ mod tests {
         assert_eq!(OLLAMA_DOWNLOAD_URL, "https://ollama.com/download");
         // Compile-time check: the command takes only the app handle, never a URL.
         let _: fn(AppHandle) -> Result<(), String> = open_ollama_download;
+    }
+
+    #[test]
+    fn releases_url_is_fixed() {
+        assert_eq!(RELEASES_URL, "https://github.com/Hirukadeven07/mouce/releases/latest");
+        // Compile-time check: the command takes only the app handle, never a URL.
+        let _: fn(AppHandle) -> Result<(), String> = update_open_download;
     }
 
     #[test]

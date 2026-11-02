@@ -13,6 +13,7 @@ pub mod settings;
 pub mod startup;
 pub mod store;
 pub mod tray;
+pub mod updates;
 
 use secrets::Secrets;
 use settings::Settings;
@@ -47,6 +48,8 @@ pub struct AppState {
     pub chat_draft: Mutex<Option<String>>,
     /// The reminders due now, shown on the card beside the mouce.
     pub alerts: calendar::alerts::AlertsState,
+    /// The newer version found by the last update check.
+    pub updates: updates::UpdateState,
 }
 
 impl AppState {
@@ -72,6 +75,7 @@ impl AppState {
             dictionary: dictionary::DictionaryState::default(),
             chat_draft: Mutex::new(None),
             alerts: calendar::alerts::AlertsState::default(),
+            updates: updates::UpdateState::default(),
         }
     }
 }
@@ -141,6 +145,7 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         log::warn!("could not start the dictionary: {e}");
     }
     calendar::alerts::start(app.handle());
+    updates::start(app.handle());
     if !settings.first_run_done {
         mouce::open_firstrun(app.handle());
     }
@@ -263,6 +268,9 @@ pub fn run() -> Result<(), String> {
             commands::alerts_fit,
             commands::alerts_act,
             commands::alerts_open,
+            commands::update_check,
+            commands::update_current,
+            commands::update_open_download,
         ])
         .setup(|app| {
             // A setup error would make Tauri panic, which under the windows subsystem is a

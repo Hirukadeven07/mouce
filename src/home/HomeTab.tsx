@@ -1,5 +1,6 @@
 import type { HomeTabId, Settings } from "../lib/types";
 import { PROVIDERS } from "../settings/AiSettings";
+import { useUpdates } from "../settings/useUpdates";
 import { addDays, gridRange, isoDate, monthTitle } from "./dates";
 import { ItemList } from "./ItemList";
 import { MonthView } from "./MonthView";
@@ -59,8 +60,19 @@ export function HomeTab(props: {
   // Reminders have their own card, so this one is the events.
   const coming = useCalendarRange(start, addDays(start, COMING_DAYS - 1));
   const events = coming && coming.filter((i) => i.kind === "event");
+  const { found: update } = useUpdates();
   return (
     <div className="home-dash">
+      {update && (
+        <section className="card update-card" aria-labelledby="update-card-title">
+          <h2 id="update-card-title" className="headline">
+            mouce {update.version} is available
+          </h2>
+          <button type="button" className="primary" onClick={() => onNavigate("settings")}>
+            See update
+          </button>
+        </section>
+      )}
       {settings ? (
         <AiCard settings={settings} onChange={() => onNavigate("settings")} />
       ) : (

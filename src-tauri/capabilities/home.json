@@ -39,6 +39,9 @@
     "allow-calendar-clear-done",
     "allow-calendar-skip-day",
     "allow-calendar-change-day",
-    "allow-calendar-understand"
+    "allow-calendar-understand",
+    "allow-update-check",
+    "allow-update-current",
+    "allow-update-open-download"
   ]
 }

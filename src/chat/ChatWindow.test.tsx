@@ -27,6 +27,7 @@ const baseSettings: Settings = {
   quiet_from: "22:00",
   quiet_to: "07:00",
   wait_for_full_screen: true,
+  check_for_updates: true,
 };
 
 const done = (text: string, extra: Partial<ChatReply> = {}): ChatReply => ({

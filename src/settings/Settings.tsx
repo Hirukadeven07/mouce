@@ -3,6 +3,7 @@ import { getAutostart, setAutostart } from "../lib/ipc";
 import { Switch } from "../ui/Switch";
 import { AiSettings } from "./AiSettings";
 import { errorText, useSettings } from "./useSettings";
+import { useUpdates } from "./useUpdates";
 
 /** One keyboard shortcut in a settings row: type it, then Save. Empty turns it off. */
 function ShortcutField(props: {
@@ -49,6 +50,43 @@ function ShortcutField(props: {
   );
 }
 
+/** The version in use, a check for a newer one, and the way to download it. */
+function UpdateRow() {
+  const { version, found, state, check, download } = useUpdates();
+  return (
+    <div className="form-row">
+      {found ? (
+        <>
+          <div className="form-line">
+            <p className="form-label">
+              mouce {found.version} is available
+              <small>
+                You have {found.current_version}. Download the new installer and run it; your
+                settings, keys and calendar are kept.
+              </small>
+            </p>
+            <button type="button" className="primary" onClick={() => void download()}>
+              Download
+            </button>
+          </div>
+          {found.notes && <p className="update-notes">{found.notes}</p>}
+        </>
+      ) : (
+        <div className="form-line">
+          <p className="form-label">
+            {version ? `mouce ${version}` : "mouce"}
+            {state.phase === "latest" && <small role="status">You have the latest version.</small>}
+          </p>
+          <button type="button" disabled={state.phase === "checking"} onClick={() => void check()}>
+            {state.phase === "checking" ? "Checking…" : "Check for updates"}
+          </button>
+        </div>
+      )}
+      {state.phase === "error" && <p role="alert" className="error">{state.message}</p>}
+    </div>
+  );
+}
+
 /** The Settings tab of the home window. */
 export function Settings() {
   const { settings, error, save } = useSettings();
@@ -64,6 +102,7 @@ export function Settings() {
     quietFrom: useId(),
     quietTo: useId(),
     fullScreen: useId(),
+    updates: useId(),
   };
   const [autostart, setAutostartState] = useState<boolean | null>(null);
   const [autostartError, setAutostartError] = useState<string | null>(null);
@@ -260,6 +299,27 @@ export function Settings() {
           {autostartError && <p role="alert" className="error">{autostartError}</p>}
         </div>
       </div>
+
+      <h2 className="group-title">Updates</h2>
+      <div className="group">
+        <UpdateRow />
+        <div className="form-row">
+          <div className="form-line">
+            <label className="form-label" htmlFor={ids.updates}>
+              Check for updates automatically
+            </label>
+            <Switch
+              id={ids.updates}
+              checked={settings.check_for_updates}
+              onChange={(e) => void save({ check_for_updates: e.target.checked })}
+            />
+          </div>
+        </div>
+      </div>
+      <p className="group-footer">
+        mouce asks GitHub whether a newer version exists. It never downloads or installs
+        anything itself: Download opens the release page in your browser.
+      </p>
     </div>
   );
 }

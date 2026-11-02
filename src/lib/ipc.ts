@@ -1,4 +1,5 @@
 // The only module that talks to @tauri-apps/api.
+import { getVersion } from "@tauri-apps/api/app";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -19,6 +20,7 @@ import type {
   Settings,
   MouceState,
   Today,
+  UpdateInfo,
   WordCard,
 } from "./types";
 
@@ -285,4 +287,30 @@ export function alertsAct(id: number, action: AlertAction): Promise<void> {
 // Opens the home window on the Calendar or Reminders tab, where card item `id` is.
 export function alertsOpen(id: number): Promise<void> {
   return invoke<void>("alerts_open", { id });
+}
+
+// ---- updates ----
+
+/** The version of mouce that is running. */
+export function appVersion(): Promise<string> {
+  return getVersion();
+}
+
+/** Asks GitHub for a newer version; null when this is the latest. */
+export function updateCheck(): Promise<UpdateInfo | null> {
+  return invoke<UpdateInfo | null>("update_check");
+}
+
+/** The newer version an earlier check found, if any. */
+export function updateCurrent(): Promise<UpdateInfo | null> {
+  return invoke<UpdateInfo | null>("update_current");
+}
+
+/** Opens the latest release's page in the browser, to download the new installer. */
+export function updateOpenDownload(): Promise<void> {
+  return invoke<void>("update_open_download");
+}
+
+export function onUpdateAvailable(cb: (update: UpdateInfo) => void): Promise<UnlistenFn> {
+  return listen<UpdateInfo>("update-available", (e) => cb(e.payload));
 }

@@ -27,6 +27,7 @@ const baseSettings: Settings = {
   quiet_from: "22:00",
   quiet_to: "07:00",
   wait_for_full_screen: true,
+  check_for_updates: true,
 };
 
 let progressCb: ((p: PullProgress) => void) | undefined;
@@ -401,6 +402,66 @@ describe("Settings", () => {
       await user.click(await screen.findByRole("button", { name: downloadName }));
       expect(await screen.findByText("A download is already in progress")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: downloadName })).toBeEnabled();
+    });
+  });
+
+  describe("updates", () => {
+    const newer = { version: "0.2.0", current_version: "0.1.0", notes: "Faster answers." };
+
+    it("shows the version and says when it is the latest", async () => {
+      const user = userEvent.setup();
+      vi.mocked(ipc.appVersion).mockResolvedValue("0.1.0");
+      vi.mocked(ipc.updateCurrent).mockResolvedValue(null);
+      vi.mocked(ipc.updateCheck).mockResolvedValue(null);
+      await renderSettings();
+      expect(await screen.findByText("mouce 0.1.0")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Check for updates" }));
+      expect(ipc.updateCheck).toHaveBeenCalled();
+      expect(await screen.findByText("You have the latest version.")).toBeInTheDocument();
+      expect(ipc.updateOpenDownload).not.toHaveBeenCalled();
+    });
+
+    it("offers a found update with its notes, and opens the release page to download it", async () => {
+      const user = userEvent.setup();
+      vi.mocked(ipc.updateCurrent).mockResolvedValue(newer);
+      vi.mocked(ipc.updateOpenDownload).mockResolvedValue(undefined);
+      await renderSettings();
+      expect(await screen.findByText("mouce 0.2.0 is available")).toBeInTheDocument();
+      expect(screen.getByText("Faster answers.")).toBeInTheDocument();
+      expect(ipc.updateOpenDownload).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Download" }));
+      expect(ipc.updateOpenDownload).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows an update found in the background", async () => {
+      let announce: ((u: typeof newer) => void) | undefined;
+      vi.mocked(ipc.onUpdateAvailable).mockImplementation(async (cb) => {
+        announce = cb;
+        return () => {};
+      });
+      await renderSettings();
+      await waitFor(() => expect(announce).toBeDefined());
+      act(() => announce?.(newer));
+      expect(await screen.findByText("mouce 0.2.0 is available")).toBeInTheDocument();
+    });
+
+    it("shows a failed check or install word for word", async () => {
+      const user = userEvent.setup();
+      vi.mocked(ipc.updateCheck).mockRejectedValue("mouce couldn't check for updates.");
+      await renderSettings();
+      await user.click(screen.getByRole("button", { name: "Check for updates" }));
+      expect(await screen.findByText("mouce couldn't check for updates.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Check for updates" })).toBeEnabled();
+    });
+
+    it("saves the automatic check switch", async () => {
+      const user = userEvent.setup();
+      await renderSettings();
+      await user.click(screen.getByRole("switch", { name: "Check for updates automatically" }));
+      expect(ipc.updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ check_for_updates: false }),
+      );
     });
   });
 });

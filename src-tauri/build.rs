@@ -50,6 +50,9 @@ const COMMANDS: &[&str] = &[
     "alerts_fit",
     "alerts_act",
     "alerts_open",
+    "update_check",
+    "update_current",
+    "update_open_download",
 ];
 
 fn main() {

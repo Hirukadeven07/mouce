@@ -28,6 +28,7 @@ const baseSettings: Settings = {
   quiet_from: "22:00",
   quiet_to: "07:00",
   wait_for_full_screen: true,
+  check_for_updates: true,
 };
 
 let tabCb: ((tab: HomeTabId) => void) | undefined;
@@ -66,6 +67,25 @@ describe("HomeWindow", () => {
     vi.mocked(ipc.calendarBetween).mockResolvedValue([]);
     vi.mocked(ipc.calendarReminders).mockResolvedValue([]);
     vi.mocked(ipc.onCalendarChanged).mockResolvedValue(() => {});
+  });
+
+  it("tells you about a newer version and takes you to Settings", async () => {
+    vi.mocked(ipc.updateCurrent).mockResolvedValue({
+      version: "0.2.0",
+      current_version: "0.1.0",
+      notes: null,
+    });
+    render(<HomeWindow />);
+    expect(await screen.findByRole("heading", { name: "mouce 0.2.0 is available" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "See update" }));
+    expect(await screen.findByRole("heading", { name: "Updates" })).toBeInTheDocument();
+  });
+
+  it("shows no update notice when there is none", async () => {
+    vi.mocked(ipc.updateCurrent).mockResolvedValue(null);
+    render(<HomeWindow />);
+    await screen.findByRole("button", { name: "Ask mouce" });
+    expect(screen.queryByRole("button", { name: "See update" })).not.toBeInTheDocument();
   });
 
   it("Ask mouce opens the chat", async () => {

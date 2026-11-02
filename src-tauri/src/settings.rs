@@ -62,6 +62,8 @@ pub struct Settings {
     pub quiet_to: String,
     /// Reminders wait while an app fills the screen (a film, a presentation, a game).
     pub wait_for_full_screen: bool,
+    /// Looks for a newer version now and then. Installing always waits for the user.
+    pub check_for_updates: bool,
 }
 
 impl Default for Settings {
@@ -85,6 +87,7 @@ impl Default for Settings {
             quiet_from: "22:00".to_string(),
             quiet_to: "07:00".to_string(),
             wait_for_full_screen: true,
+            check_for_updates: true,
         }
     }
 }
